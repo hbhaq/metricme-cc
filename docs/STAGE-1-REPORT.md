@@ -49,6 +49,8 @@ Rendered visual inspection, TalkBack, 200% font scaling, physical-device behavio
 
 GitHub source upload succeeded on `main`. The first CI run failed during SDK setup because the setup action's default package list included the removed `tools` package. The workflow now explicitly requests `platform-tools` and pins command-line tools 13114758, matching the locally working tool release. Emulator execution is still pending the corrected CI run.
 
+The next CI run passed the build job and ran all six emulator tests: five passed, while schema reopening failed with a serialization runtime linkage error. The app and test configurations now share a serialization BOM, and screenshot collection runs before emulator teardown. The corrected emulator run is pending; no failing test is disabled or replaced with a mock.
+
 ## Incomplete / later stages
 
 - Stage 2: food/activity/steps/sleep/habits/medication forms, scheduled occurrences, local reminders and their tests.

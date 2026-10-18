@@ -28,6 +28,8 @@ kotlin { jvmToolchain(17) }
 room { schemaDirectory("$projectDir/schemas") }
 dependencies {
     implementation(project(":domain"))
+    // Keep the app-loaded runtime aligned with Room's instrumented schema reader.
+    implementation(platform(libs.serialization.bom))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.preview)
@@ -48,6 +50,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(platform(libs.serialization.bom))
     androidTestImplementation(libs.compose.test)
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.android.test.runner)
