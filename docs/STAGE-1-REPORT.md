@@ -30,28 +30,28 @@ Final command, through the checksummed wrapper:
 
 ```text
 .\gradlew.bat :domain:test :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --console=plain
-BUILD SUCCESSFUL in 1m 1s
-88 actionable tasks: 18 executed, 70 up-to-date
+BUILD SUCCESSFUL in 9m 45s
+88 actionable tasks: 86 executed, 2 up-to-date
 Lint: No issues found.
 ```
 
-The preceding lint run found one `NonObservableLocale` error. It was fixed using Compose's observable LocalLocale for date/measurement formatting; the command above verifies the corrected final source. The domain tests were up-to-date on the final run after their real successful execution in the first build.
+An earlier lint run found one `NonObservableLocale` error. It was fixed using Compose's observable LocalLocale for date/measurement formatting; the command above verifies the final source including the serialization alignment described below. The domain tests were up-to-date on the final run after their real successful execution in the first build.
 
 ZIP inspection confirms the test APK contains `assets/com.hbhaq.metricme.data.MetricMeDatabase/1.json`. The schema has 19 tables. AAPT confirms package `com.hbhaq.metricme`, version 0.1.0, target SDK 37, and no Internet/camera/microphone/notification permissions. A generated signature-level receiver permission is present; it produces no runtime permission prompt.
 
 Artifacts: `app/build/outputs/apk/debug/app-debug.apk` and `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`. These are debug builds, not a signed release. A nonfatal native-library stripping notice and a deprecated Compose test-rule notice occurred during the initial build; neither is a test pass or device validation.
 
-## Not executed locally
+## Emulator checks and remaining device checks
 
-Four database instrumentation tests and two Compose navigation/recreation/demo tests compile into the test APK. They have not yet run on a device. ADB found no connected devices; Windows reports virtualization unavailable. CI supplies an API 35 emulator and a screenshot artifact step, but configured CI is not a passing test result. Physical camera/microphone/notifications are outside Stage 1.
+All four database instrumentation tests and both Compose navigation/recreation/demo tests passed on the API 35 GitHub CI emulator: schema reopening/validation, retry deduplication and deletion/history behavior, conflicting operation keys, profile edits/manual-target preservation, rotation/cancel, and demo isolation. The final passing run is https://github.com/hbhaq/metricme-cc/actions/runs/39128955309 . Both its build/lint job and device-test job succeeded.
 
-Rendered visual inspection, TalkBack, 200% font scaling, physical-device behavior, real process-death restoration, release signing, and migration across a future schema version are pending. Rotation coverage is authored; do not equate it with a verified process-death test.
+No local or physical-device instrumentation ran: ADB found no connected devices and Windows reports virtualization unavailable. TalkBack, 200% font scaling, physical-device behavior, real process-death restoration, release signing, and migration across a future schema version remain pending. Rotation passed; it is not proof of process-death restoration. Camera/microphone/notifications are outside Stage 1.
 
-GitHub source upload succeeded on `main`. The first CI run failed during SDK setup because the setup action's default package list included the removed `tools` package. The workflow now explicitly requests `platform-tools` and pins command-line tools 13114758, matching the locally working tool release. Emulator execution is still pending the corrected CI run.
+GitHub source upload succeeded on `main`. Verification exposed two setup issues, both fixed: the SDK action's default removed `tools` package (explicit platform-tools and a pinned CLI now used), and app/test serialization runtime misalignment (shared BOM 1.8.1). No failing test was disabled or replaced with a mock.
 
-The next CI run passed the build job and ran all six emulator tests: five passed, while schema reopening failed with a serialization runtime linkage error. The app and test configurations now share a serialization BOM. The corrected run at https://github.com/hbhaq/metricme-cc/actions/runs/39128451163 passed both jobs, including all six emulator tests. No failing test was disabled or replaced with a mock.
+Private screenshot files were unavailable after instrumentation cleanup. The CI capture script therefore reinstalls the verified APK and captures a real first-launch screen before emulator teardown. The final follow-up passed all checks and produced `docs/screenshots/today.png`, a 320×640 native Android screenshot. It was visually inspected for the Today screen's typography, spacing, contrast and navigation. This is not a claim that all screens, font scales or TalkBack behavior were visually verified.
 
-Gradle removes the installed package and its private screenshot files after instrumentation. The CI capture script therefore reinstalls the verified APK and captures a real first-launch screen before emulator teardown. This capture-only follow-up is pending visual inspection; application source and the six passing tests are unchanged.
+GitHub build artifacts: https://github.com/hbhaq/metricme-cc/actions/runs/39128955309/artifacts/12136814218 . Emulator reports and screenshot: https://github.com/hbhaq/metricme-cc/actions/runs/39128955309/artifacts/12137033575 . These artifacts expire; the screenshot is also committed in the repository. Unique executed tests: 11 domain + 6 instrumented, all passing.
 
 ## Incomplete / later stages
 
@@ -70,6 +70,6 @@ Domain: `domain/build.gradle.kts`; complete `Profile.kt`, `HealthRules.kt`, and 
 
 Android: `app/build.gradle.kts`, manifest and day/night/XML/icon resources; `MetricMeApplication.kt`, `MainActivity.kt`, `di/DatabaseModule.kt`; `data/Entities.kt`, `MetricMeDatabase.kt`, `ProfileRepository.kt`; `ui/Theme.kt`, `MetricMeViewModel.kt`, `MetricMeApp.kt`; compiler-exported `app/schemas/com.hbhaq.metricme.data.MetricMeDatabase/1.json`; `DatabaseTest.kt`, `NavigationTest.kt` instrumentation tests.
 
-CI/docs: `.github/workflows/android.yml`, `docs/DEPENDENCIES.md`, `docs/DEVICE-CHECKS.md`, this report. The Stage 0 plan is preserved. The planned feature tree is consolidated into a smaller number of complete files for Stage 1; later features will split as implemented.
+CI/docs: `.github/workflows/android.yml`, `scripts/device-tests.sh`, `docs/DEPENDENCIES.md`, `docs/DEVICE-CHECKS.md`, this report. The Stage 0 plan is preserved. The planned feature tree is consolidated into a smaller number of complete files for Stage 1; later features will split as implemented.
 
 Per the supplied staged brief, stop here after Stage 1. The user's existing authorization covers GitHub upload and the later Railway deployment, but implementation advances only after “continue.”

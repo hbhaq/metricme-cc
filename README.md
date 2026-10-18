@@ -4,6 +4,8 @@ A calm, local-first native Android habit and health journal. Kotlin, Jetpack Com
 
 **Current delivery: Stage 1.** Profile editing, timestamped height/weight history, estimate/manual energy targets, an accessible navigation shell, and isolated read-only sample data. Manual daily logging is Stage 2; AI and the Railway Ktor backend are Stage 3; analytics/coaching are Stage 4; final privacy/deletion and accessibility verification are Stage 5. Do not use this development build as medical advice.
 
+<img src="docs/screenshots/today.png" width="320" alt="MetricMe Today screen captured from the real Android app on the CI emulator">
+
 ## Build
 
 Use JDK 17 and an Android SDK with `platforms;android-37.0` and `build-tools;36.0.0`. Set `ANDROID_HOME`, or put `sdk.dir=/absolute/path/to/sdk` in the ignored `local.properties`. The Gradle wrapper pins 9.4.1 and verifies its distribution checksum. AGP 9.2.1 uses built-in Kotlin; do not add `org.jetbrains.kotlin.android`.
