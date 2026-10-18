@@ -11,10 +11,10 @@ import java.net.URI
 
 class OpenAiGatewayTest {
     private fun response(text:String,type:String="output_text",status:String="completed")=buildJsonObject { put("status",status); putJsonArray("output") { add(buildJsonObject { putJsonArray("content") { add(buildJsonObject { put("type",type); put(if(type=="refusal") "refusal" else "text",text) }) } }) } }.toString()
-    private fun withServer(body:String,status:Int=200,test:(URI,MutableList<String>)->Unit) {
+    private fun withServer(body:String,status:Int=200,stallMillis:Long=0,test:(URI,MutableList<String>)->Unit) {
         val seen=java.util.Collections.synchronizedList(mutableListOf<String>())
         val server=HttpServer.create(InetSocketAddress("127.0.0.1",0),0)
-        server.createContext("/v1/responses") { exchange -> seen.add(String(exchange.requestBody.readAllBytes())); val bytes=body.toByteArray(); exchange.responseHeaders.add("Content-Type","application/json"); exchange.sendResponseHeaders(status,bytes.size.toLong()); exchange.responseBody.use { it.write(bytes) } }; server.start()
+        server.createContext("/v1/responses") { exchange -> seen.add(String(exchange.requestBody.readAllBytes())); val bytes=body.toByteArray(); exchange.responseHeaders.add("Content-Type","application/json"); exchange.sendResponseHeaders(status,bytes.size.toLong()); if(stallMillis>0) Thread.sleep(stallMillis); runCatching { exchange.responseBody.use { it.write(bytes) } } }; server.start()
         try { test(URI("http://127.0.0.1:${server.address.port}/v1/"),seen) } finally { server.stop(0) }
     }
     @Test fun responseSchemaIsStrictStoreFalseAndNoToolsAreEnabled() {
@@ -36,6 +36,9 @@ class OpenAiGatewayTest {
         withServer(response(WireJson.encodeToString(f))) { origin,_ -> assertThrows(ApiFailure::class.java) { runBlocking { OpenAiGateway("test-key",origin=origin).estimate("FOOD",photoRequest(),byteArrayOf(1)) } } }
     }
     @Test fun upstream429IsBoundedAndMarkedRetryable() { withServer("{}",429) { origin,seen -> val e=assertThrows(ApiFailure::class.java) { runBlocking { OpenAiGateway("test-key",origin=origin).estimate("FOOD",photoRequest(),byteArrayOf(1)) } }; assertTrue(e.retryable); assertEquals(1,seen.size) } }
+    @Test fun stalledResponseBodiesHaveAnOverallDeadlineAndRemainUncertain() {
+        withServer("{}",stallMillis=1500) { origin,_ -> val e=assertThrows(ApiFailure::class.java) { runBlocking { OpenAiGateway("test-key",origin=origin,timeoutMillis=300).estimate("FOOD",photoRequest(),byteArrayOf(1)) } }; assertEquals("upstream_uncertain",e.code); assertFalse(e.retryable) }
+    }
     @Test fun audioUsesTranscriptionThenStructuredExtractionWithoutInventedSteps() {
         val server=HttpServer.create(InetSocketAddress("127.0.0.1",0),0)
         val transcript="I walked for twenty minutes."

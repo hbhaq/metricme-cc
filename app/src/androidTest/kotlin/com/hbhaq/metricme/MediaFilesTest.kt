@@ -10,7 +10,7 @@ import org.junit.Test
 import org.junit.Assert.*
 
 class MediaFilesTest {
-    @Test fun photoImportNormalizesOrientationAndRemovesLocationMetadata()=runBlocking {
+    @Test fun photoImportNormalizesOrientationAndRemovesLocationMetadata()=runBlocking<Unit> {
         val files=MediaFiles(InstrumentationRegistry.getInstrumentation().targetContext)
         val raw=files.newFile("jpg"); var result:String?=null
         try {
@@ -24,7 +24,7 @@ class MediaFilesTest {
             assertTrue(normalized.length()>0)
         } finally { files.delete(raw.path); files.delete(result) }
     }
-    @Test fun invalidPhotoDoesNotLeaveImportedFilesAndPathsStayPrivate()=runBlocking {
+    @Test fun invalidPhotoDoesNotLeaveImportedFilesAndPathsStayPrivate()=runBlocking<Unit> {
         val files=MediaFiles(InstrumentationRegistry.getInstrumentation().targetContext)
         val raw=files.newFile("jpg"); raw.writeText("not an image"); val before=files.files().map { it.path }.toSet()
         try {
