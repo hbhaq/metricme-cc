@@ -89,8 +89,10 @@ class AiUploadWorker(context:Context,params:WorkerParameters):CoroutineWorker(co
             val request=EstimateRequest(Base64.encodeToString(withContext(Dispatchers.IO) { file.readBytes() },Base64.NO_WRAP),value.mime,value.context,job.consentVersion,true)
             val api=apiAt(backend); val response=if(row.kind=="FOOD") api.food("Bearer $token",job.operationKey,request) else api.activity("Bearer $token",job.operationKey,request)
             val result=response.body()
+            val safeCode=if(!response.isSuccessful) runCatching { WireJson.decodeFromString<ApiError>(response.errorBody()?.string()?.take(2048).orEmpty()).code }.getOrNull() else null
             when {
                 response.code()==401 || response.code()==403 -> { repo.status(id,jobId,"AUTH_REQUIRED","Sign in again to continue."); return Result.success() }
+                response.code()==503 && safeCode=="not_configured" -> { repo.status(id,jobId,"FAILED","The service is not configured for real AI yet. Your draft stays on this device."); return Result.failure() }
                 response.code() in listOf(408,429) || response.code() in 500..599 -> { repo.status(id,jobId,"RETRYABLE","Temporary server issue. Retrying with the same operation key."); return Result.retry() }
                 !response.isSuccessful || result==null -> { repo.status(id,jobId,"FAILED","Request rejected. Check the media, connection configuration and consent."); return Result.failure() }
                 result.status=="READY" && result.result!=null -> { if(!repo.apply(id,jobId,requireNotNull(result.result))) graph.queue().maintain(); return Result.success() }

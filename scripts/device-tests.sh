@@ -10,5 +10,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -W -n com.hbhaq.metricme/.MainActivity
 sleep 3
 mkdir -p ui-screenshots
+if adb shell test -d /sdcard/Download/metricme-ci; then
+  adb pull /sdcard/Download/metricme-ci ui-screenshots/
+fi
 adb exec-out screencap -p > ui-screenshots/today.png
 exit "$test_status"

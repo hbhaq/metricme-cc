@@ -36,4 +36,22 @@ class OpenAiGatewayTest {
         withServer(response(WireJson.encodeToString(f))) { origin,_ -> assertThrows(ApiFailure::class.java) { runBlocking { OpenAiGateway("test-key",origin=origin).estimate("FOOD",photoRequest(),byteArrayOf(1)) } } }
     }
     @Test fun upstream429IsBoundedAndMarkedRetryable() { withServer("{}",429) { origin,seen -> val e=assertThrows(ApiFailure::class.java) { runBlocking { OpenAiGateway("test-key",origin=origin).estimate("FOOD",photoRequest(),byteArrayOf(1)) } }; assertTrue(e.retryable); assertEquals(1,seen.size) } }
+    @Test fun audioUsesTranscriptionThenStructuredExtractionWithoutInventedSteps() {
+        val server=HttpServer.create(InetSocketAddress("127.0.0.1",0),0)
+        val transcript="I walked for twenty minutes."
+        val seen=java.util.Collections.synchronizedList(mutableListOf<String>())
+        server.createContext("/v1/audio/transcriptions") { exchange ->
+            val request=String(exchange.requestBody.readAllBytes()); seen.add(request)
+            val bytes=buildJsonObject { put("text",transcript) }.toString().toByteArray(); exchange.sendResponseHeaders(200,bytes.size.toLong()); exchange.responseBody.use { it.write(bytes) }
+        }
+        server.createContext("/v1/responses") { exchange ->
+            seen.add(String(exchange.requestBody.readAllBytes()))
+            val bytes=response(WireJson.encodeToString(DemoEstimates.activity().activity!!)).toByteArray(); exchange.sendResponseHeaders(200,bytes.size.toLong()); exchange.responseBody.use { it.write(bytes) }
+        }; server.start()
+        try { runBlocking {
+            val result=OpenAiGateway("test-key",origin=URI("http://127.0.0.1:${server.address.port}/v1/")).estimate("ACTIVITY",EstimateRequest("","audio/wav",consentVersion=CONSENT_VERSION,consented=true),byteArrayOf(1,2))
+            assertEquals(transcript,result.activity!!.transcript); assertNull(result.activity!!.steps); assertEquals(2,seen.size)
+            assertTrue(seen[0].contains("gpt-4o-mini-transcribe")); assertTrue(seen[0].contains("filename=\"activity.wav\"")); assertTrue(seen[1].contains(transcript)); assertFalse(seen[1].contains("input_image"))
+        } } finally { server.stop(0) }
+    }
 }
