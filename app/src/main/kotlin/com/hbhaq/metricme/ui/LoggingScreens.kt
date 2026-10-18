@@ -66,7 +66,7 @@ import kotlin.math.roundToInt
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { PageTitle("One day at a time", profile.profile?.name?.takeIf { it.isNotBlank() }?.let { "Make room for you, $it." } ?: "Small steps. More you.", "Your journal works offline. Every entry stays on this device.") }
         item { DayNavigator(state, model) }
-        item { LoggingError(state, model) }
+        if (state.error != null) item { LoggingError(state, model) }
         if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth().semantics { contentDescription = "Loading local logs" }) }
         item {
             Surface(color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(28.dp)) {
@@ -79,7 +79,7 @@ import kotlin.math.roundToInt
                     if (unknown > 0) Text("$unknown food entries have unknown calories.", style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider(color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .2f))
                     Text(target?.calories?.let { "${it.roundToInt()} kcal ${if (target.manual) "manual target" else "estimated maintenance"}" } ?: "No calorie target set", style = MaterialTheme.typography.labelLarge)
-                    Text("Confirmed entries only · AI estimates stay labeled in your journal", style = MaterialTheme.typography.bodySmall)
+                    Text("Confirmed entries · estimates labeled", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -113,7 +113,7 @@ import kotlin.math.roundToInt
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item { PageTitle("Your record", "Every day tells a story.", "Correct a detail whenever you need. Cancel keeps the saved entry.") }
         item { DayNavigator(state, model) }
-        item { LoggingError(state, model) }
+        if (state.error != null) item { LoggingError(state, model) }
         if (records.isEmpty()) item { Panel { Icon(Icons.AutoMirrored.Outlined.MenuBook, null); Text("No logs for this day", style = MaterialTheme.typography.titleLarge); Text("Use Log to add food, activity, steps or sleep. Unlogged data is unknown, not zero.") } }
         items(records, key = { it.id }) { row -> Panel {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { BadgeText(row.kind.label); Text(row.instant.atZone(ZoneId.of(row.zone)).format(DateTimeFormatter.ofPattern("HH:mm XXX", locale)), style = MaterialTheme.typography.bodySmall) }
