@@ -12,4 +12,3 @@ sleep 3
 mkdir -p ui-screenshots
 adb exec-out screencap -p > ui-screenshots/today.png
 exit "$test_status"
-

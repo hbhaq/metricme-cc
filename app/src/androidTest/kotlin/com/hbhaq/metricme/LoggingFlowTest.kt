@@ -46,4 +46,3 @@ class LoggingFlowTest {
         compose.onNodeWithText("Delete", substring = false).performScrollTo().performClick(); compose.onNodeWithText("Delete record").performClick()
     }
 }
-

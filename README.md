@@ -49,4 +49,3 @@ No backend is deployed in Stage 2. Railway will host the Ktor API, while Android
 [Stage 2 passing checks and debug APK](https://github.com/hbhaq/metricme-cc/actions/runs/39140255260) — 29 domain tests and 19 emulator tests passed; lint completed with 0 errors and 3 style warnings.
 
 See [the approved planning document](STAGE-0-PLAN.md), [Stage 1 report](docs/STAGE-1-REPORT.md) and [Stage 2 verification report](docs/STAGE-2-REPORT.md).
-

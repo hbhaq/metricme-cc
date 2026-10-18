@@ -32,7 +32,7 @@ Local Windows attempts encountered undeletable generated-output directories. An 
 
 The final real first-launch screenshot was visually inspected on the API 35 emulator and saved at `docs/screenshots/today.png`. No screenshot or mockup is presented as physical-device validation.
 
-Verified source commit: `0de0a4253c93836ae0bee28ed0aea521d19c132e`. [Passing workflow](https://github.com/hbhaq/metricme-cc/actions/runs/39140255260). The final documentation/screenshot commit changes no application code.
+Verified source commit: `0de0a4253c93836ae0bee28ed0aea521d19c132e`. [Passing workflow](https://github.com/hbhaq/metricme-cc/actions/runs/39140255260). Subsequent delivery commits contain documentation, the screenshot and text line-ending normalization; application behavior is unchanged.
 
 [Download APKs and build reports](https://github.com/hbhaq/metricme-cc/actions/runs/39140255260/artifacts/12140743862). Extract `app/build/outputs/apk/debug/app-debug.apk` from the archive. This is a development debug build. Artifact retention ends 2027-01-16; source remains rebuildable.
 
@@ -49,4 +49,3 @@ Added: domain `Logging.kt`, `Routines.kt` and their tests; data `LocalMutations.
 Updated: entities/database and Hilt module; application/activity; navigation/shared components; catalog, app build config/version and manifest; existing migration/navigation tests; CI emulator profile/artifact naming; README and dependency/device-check docs.
 
 Stop after Stage 2 per the staged brief. Existing authorization covers GitHub upload and the later Railway deployment; the next stage begins after “continue.”
-

@@ -399,4 +399,3 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
     OutlinedButton(onClick = { model.saveTarget(automatic = true) }, modifier = Modifier.fillMaxWidth()) { Text("Use automatic estimate") }
     Text("If required inputs are missing or automatic recommendations are disabled, the estimate remains unavailable. Logging stays available.", style = MaterialTheme.typography.bodySmall)
 }
-
