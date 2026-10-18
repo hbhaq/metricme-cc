@@ -13,15 +13,28 @@ Scope: offline manual logging, scheduled habit/medication occurrences, local rem
 - A persistent Log action, focused saved-state forms, date navigation, a real offline journal with edit/delete, daily logged subtotals and routine controls. Demo remains read-only and does not write personal data. Insights and full analytics remain Stage 4.
 - Non-destructive Room schema 1→2 migration. Version 1 stays committed; version 2 has 23 tables, nullable food nutrition, snapshot fields and new workout/PRN/delivery/settings tables. Existing profile, measurements, food and history are preserved.
 
-## Verification in progress
+## Verification
 
-The first two local attempts encountered undeletable stale generated-output directories left from Stage 1. Only verified `app/build` and `domain/build` outputs were cleared, after preserving the prior APK. No source or user data was removed.
+GitHub Actions built the debug application and instrumented-test APK, ran all 29 domain tests with zero failures/skips, and completed Android lint with 0 errors and 3 style warnings (`UseKtx`). Commands:
 
-An intermediate clean build compiled app code and ran 28 domain tests with zero failures. Its test compilation used a dependency/service configuration superseded during implementation; the final source is now frozen and rebuilding. A further nutrition portion-scaling test brings the intended domain count to 29; it is not yet claimed passed here.
+```sh
+bash gradlew :domain:test :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --stacktrace
+bash scripts/device-tests.sh
+```
 
-Executed the actual migration SQL in SQLite against the committed v1 schema and preservation fixtures. Profile and food values survived; all 23 table column definitions matched the compiler-exported v2 schema and foreign-key checks passed. This complements rather than replaces the Android MigrationTestHelper test.
+The final API 35 emulator run passed all 19 instrumented tests with 0 failures and 0 skips: 4 profile/database/migration tests, 10 logging/occurrence tests, 2 manual logging UI flows, 2 navigation/draft/demo tests and 1 real NotificationManager integration test. The UI flows exercise food save/edit/rotation/delete and explicit-zero daily steps. An earlier failure revealed that the extended Log button omitted its label from the accessibility tree; the directly labeled replacement passes both flows.
 
-Pending final local build/lint and CI emulator results are recorded here before delivery. Authored instrumented tests cover migration/data preservation, all four manual log types, edit/delete, unknown vs zero, sleep overlap, concurrent save retries, recurrence deduplication, schedule edits/archive, snooze/PRN, stale actions and delivery claims. Compose tests cover saved edits, cancellation, food edit/delete, explicit zero steps, and demo isolation. A real NotificationManager component test checks private preview text, duplicate delivery, retained not-recorded state and idempotent Taken behavior.
+The downloaded emulator artifact SHA-256 matched GitHub's published digest. The earlier build artifact was also integrity-checked; its APK metadata confirms application ID `com.hbhaq.metricme`, version `0.2.0` (2), minSdk 26 and targetSdk 37. It requests optional notification permission and normal reminder/WorkManager infrastructure permissions, with no exact-alarm, camera or microphone permission.
+
+Executed the actual migration SQL in SQLite against the committed v1 schema and preservation fixtures. Profile and food values survived; all 23 table column definitions matched the compiler-exported v2 schema and foreign-key checks passed. The separate Android MigrationTestHelper preservation test also passed in CI.
+
+Local Windows attempts encountered undeletable generated-output directories. An intermediate clean local build compiled app code and passed 28 domain tests; final verification therefore uses clean Linux CI, rather than claiming a successful final Windows build. Only verified generated outputs were cleared; no source or user data was removed.
+
+The final real first-launch screenshot was visually inspected on the API 35 emulator and saved at `docs/screenshots/today.png`. No screenshot or mockup is presented as physical-device validation.
+
+Verified source commit: `0de0a4253c93836ae0bee28ed0aea521d19c132e`. [Passing workflow](https://github.com/hbhaq/metricme-cc/actions/runs/39140255260). The final documentation/screenshot commit changes no application code.
+
+[Download APKs and build reports](https://github.com/hbhaq/metricme-cc/actions/runs/39140255260/artifacts/12140743862). Extract `app/build/outputs/apk/debug/app-debug.apk` from the archive. This is a development debug build. Artifact retention ends 2027-01-16; source remains rebuildable.
 
 ## Remaining / not verified
 
@@ -36,3 +49,4 @@ Added: domain `Logging.kt`, `Routines.kt` and their tests; data `LocalMutations.
 Updated: entities/database and Hilt module; application/activity; navigation/shared components; catalog, app build config/version and manifest; existing migration/navigation tests; CI emulator profile/artifact naming; README and dependency/device-check docs.
 
 Stop after Stage 2 per the staged brief. Existing authorization covers GitHub upload and the later Railway deployment; the next stage begins after “continue.”
+
