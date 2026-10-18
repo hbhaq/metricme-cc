@@ -19,7 +19,11 @@ import javax.inject.Inject
     val error=MutableStateFlow<String?>(null)
     private var editing:DraftContent?=null
     fun field(key:String,fallback:String="")=fields.value[key]?:fallback
-    fun change(key:String,value:String) { if(value.length>20000) return; saved["aiFields"]=HashMap(fields.value).apply { put(key,value) }; saved["aiDirty"]=true; error.value=null }
+    fun change(key:String,value:String) {
+        val limit=when { key=="transcript" -> 20000; key=="exercises" -> 10000; key=="context" -> 2000; key.endsWith(".name") || key in setOf("type","intensity") -> 120; key.endsWith(".unit") -> 30; else -> 100 }
+        if(value.length>limit) { error.value="This field is limited to $limit characters."; return }
+        saved["aiFields"]=HashMap(fields.value).apply { put(key,value) }; saved["aiDirty"]=true; error.value=null
+    }
     fun select(row:AiDraft) { saved["aiSelected"]=row.row.id; saved["aiFields"]=hashMapOf<String,String>(); saved["aiDirty"]=false; editing=row.value; error.value=null }
     fun sync(row:AiDraft) { if(!dirty.value) editing=row.value }
     fun close() { if(!busy.value) { saved["aiSelected"]=""; saved["aiFields"]=hashMapOf<String,String>(); saved["aiDirty"]=false; editing=null; error.value=null } }

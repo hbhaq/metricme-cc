@@ -84,7 +84,7 @@ fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,
                 val media=MediaValidation.decode(request,kind)
                     val (owned,job)=withContext(Dispatchers.IO) { jobs.claim(user,id,sha256((kind+WireJson.encodeToString(request)).toByteArray())) }
                     if(!owned) { call.respond(if(job.status=="RUNNING") HttpStatusCode.Accepted else HttpStatusCode.OK,job.response()); return@post }
-                    try { val result=ai.estimate(kind,request,media); EstimateRules.validate(result); withContext(Dispatchers.IO) { jobs.finish(user,id,"READY",result) } }
+                    try { val result=ai.estimate(kind,request,media); EstimateRules.validate(result); if(result.kind!=kind || result.sample) throw ApiFailure("invalid_ai_output",502); withContext(Dispatchers.IO) { jobs.finish(user,id,"READY",result) } }
                     catch(e: CancellationException) { withContext(NonCancellable+Dispatchers.IO) { jobs.finish(user,id,"UNCERTAIN",code="upstream_uncertain") }; throw e }
                     catch(e: Exception) { val safe=e as? ApiFailure?:ApiFailure("invalid_ai_output",502); withContext(Dispatchers.IO) { jobs.finish(user,id,if(safe.retryable && job.attempt<5) "RETRYABLE" else if(safe.code=="upstream_uncertain") "UNCERTAIN" else "FAILED",code=safe.code) } }
                     call.respond(withContext(Dispatchers.IO) { requireNotNull(jobs.get(user,id)).response() })

@@ -29,7 +29,7 @@ class AiFlowTest {
             context.contentResolver.openOutputStream(uri)!!.use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it) }
         }
     }
-    @Test fun offlineDraftEditsSurviveRotationWithoutUploading()=runBlocking {
+    @Test fun offlineDraftEditsSurviveRotationWithoutUploading()=runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val graph=EntryPointAccessors.fromApplication(context,AiEntryPoint::class.java)
         val id=graph.drafts().create("FOOD",null,"image/jpeg")

@@ -16,7 +16,7 @@ data class AiDraft(val row:DraftEntity,val value:DraftContent)
     @Query("SELECT * FROM Draft WHERE profileId='local' ORDER BY createdAt DESC") fun observe():kotlinx.coroutines.flow.Flow<List<DraftEntity>>
     @Query("SELECT * FROM Draft WHERE id=:id AND profileId='local'") suspend fun draft(id:String):DraftEntity?
     @Upsert suspend fun draft(row:DraftEntity)
-    @Query("SELECT * FROM ProcessingJob WHERE draftId=:id ORDER BY createdAt DESC LIMIT 1") suspend fun job(id:String):ProcessingJobEntity?
+    @Query("SELECT * FROM ProcessingJob WHERE draftId=:id ORDER BY revision DESC, createdAt DESC, id DESC LIMIT 1") suspend fun job(id:String):ProcessingJobEntity?
     @Query("SELECT * FROM ProcessingJob WHERE status IN ('QUEUED','RUNNING','RETRYABLE','AUTH_REQUIRED','PURGE_PENDING')") suspend fun recoverable():List<ProcessingJobEntity>
     @Query("SELECT * FROM Draft") suspend fun all():List<DraftEntity>
     @Upsert suspend fun job(row:ProcessingJobEntity)
@@ -63,6 +63,7 @@ class AiDraftRepository @Inject constructor(private val db:MetricMeDatabase,priv
         EstimateRules.validate(result); require(!result.sample)
         val row=dao.draft(id)?:return@withTransaction false; val job=dao.job(id)?:return@withTransaction false
         if(dao.tombstone(id)!=null || row.revision!=job.revision || job.id!=jobId || job.status=="CANCELLED" || row.stamp.processing=="CONFIRMED") return@withTransaction false
+        require(result.kind==row.kind) { "The returned estimate does not match this draft." }
         val value=WireJson.decodeFromString<DraftContent>(row.content)
         dao.draft(row.copy(content=WireJson.encodeToString(value.copy(result=result,error=null,originalTranscript=result.activity?.transcript)),stamp=row.stamp.copy(processing="READY",confidence=result.food?.confidence,updatedAt=clock.millis())))
         dao.job(job.copy(status="READY",updatedAt=clock.millis())); true

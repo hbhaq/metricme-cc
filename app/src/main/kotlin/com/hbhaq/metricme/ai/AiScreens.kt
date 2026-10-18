@@ -71,6 +71,8 @@ import kotlinx.coroutines.withContext
         else {
             item { error?.let { ErrorMessage(it) }; if(busy) LinearProgressIndicator(Modifier.fillMaxWidth()); SectionLabel("Your private drafts") }
             val pending=drafts.filter { it.row.stamp.processing !in listOf("CONFIRMED","DELETED") }
+            val cleanup=drafts.count { it.row.stamp.processing=="DELETED" }
+            if(cleanup>0) item { Panel { Text("$cleanup server cleanup ${if(cleanup==1) "request" else "requests"} pending",style=MaterialTheme.typography.titleMedium); Text("Private media has been removed here. Sign in with the original account to finish deleting server results. Server results also expire after seven days.") } }
             if(pending.isEmpty()) item { Text("No pending drafts. Photos, recordings and edits can be kept offline.") }
             pending.forEach { row -> item(key=row.row.id) { Panel {
                 BadgeText(if(row.row.kind=="FOOD") "Food draft" else "Activity draft")
