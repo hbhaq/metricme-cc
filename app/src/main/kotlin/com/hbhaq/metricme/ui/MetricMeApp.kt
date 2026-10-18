@@ -59,7 +59,12 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel) {
     val route = entry?.destination?.route ?: "today"
     Scaffold(
         floatingActionButton = {
-            if (!state.demo && !state.loading) ExtendedFloatingActionButton(onClick = { picker = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Log") })
+            if (!state.demo && !state.loading) FloatingActionButton(onClick = { picker = true }) {
+                Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Outlined.Add, null)
+                    Text("Log", style = MaterialTheme.typography.labelLarge)
+                }
+            }
         },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
@@ -394,3 +399,4 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
     OutlinedButton(onClick = { model.saveTarget(automatic = true) }, modifier = Modifier.fillMaxWidth()) { Text("Use automatic estimate") }
     Text("If required inputs are missing or automatic recommendations are disabled, the estimate remains unavailable. Logging stays available.", style = MaterialTheme.typography.bodySmall)
 }
+
