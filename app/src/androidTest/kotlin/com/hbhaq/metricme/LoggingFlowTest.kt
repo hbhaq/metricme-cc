@@ -10,7 +10,7 @@ class LoggingFlowTest {
     private fun begin(label: String) {
         try {
             compose.waitUntil(20000) { compose.onAllNodesWithText("Log", useUnmergedTree = false).fetchSemanticsNodes().isNotEmpty() }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             throw AssertionError("Log entry point missing. UI:\n" + compose.onRoot().printToString(), e)
         }
         compose.onNodeWithText("Log").performClick(); compose.onNodeWithText(label, substring = false).performClick()
