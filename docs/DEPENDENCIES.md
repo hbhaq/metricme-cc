@@ -11,3 +11,5 @@ Checked 2026-10-18 using official docs and actual published Maven/SDK metadata. 
 - kotlinx.serialization BOM 1.8.1 aligns the installed app runtime with the Room migration-test schema reader. Instrumentation loads app classes ahead of test-APK classes, so resolving a newer runtime in the test APK alone is insufficient. The first emulator schema test exposed this mismatch; relevant upstream discussion: https://github.com/Kotlin/kotlinx.serialization/issues/2968 .
 
 The Gradle distribution SHA-256 is recorded in wrapper properties after verifying the downloaded archive against the published checksum. JDK and Android tools are ignored build-time installations. Dependency artifact verification metadata will be generated and reviewed after dependency resolution; do not claim cryptographic verification for all artifacts before that review.
+
+Stage 2 adds WorkManager runtime 2.12.0 and AndroidX test rules 1.7.0. The Android alarm/notification guidance and WorkManager release documentation were rechecked; see REMINDERS.md. The rest of the verified toolchain is retained. Room schema 2 uses an explicit non-destructive Migration(1, 2).

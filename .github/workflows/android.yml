@@ -24,7 +24,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stage-1-build-and-reports
+          name: android-build-and-reports
           path: |
             app/build/outputs/apk/
             app/build/reports/
@@ -53,6 +53,7 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
+          profile: pixel_6
           script: bash scripts/device-tests.sh
       - uses: actions/upload-artifact@v4
         if: always()

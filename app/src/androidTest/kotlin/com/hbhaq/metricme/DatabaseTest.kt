@@ -9,6 +9,7 @@ import com.hbhaq.metricme.domain.*
 import java.time.*
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -22,11 +23,17 @@ class DatabaseTest {
     @Before fun setup() { db = Room.inMemoryDatabaseBuilder(context, MetricMeDatabase::class.java).build() }
     @After fun close() { db.close() }
 
-    @Test fun exportedV1SchemaOpensAndValidates() = runBlocking {
+    @Test fun exportedV1SchemaMigratesAndPreservesProfileAndFood() = runBlocking {
         val name = "schema-validation-${UUID.randomUUID()}"
-        migration.createDatabase(name, 1).close()
-        val disk = Room.databaseBuilder(context, MetricMeDatabase::class.java, name).build()
-        try { assertNull(disk.profileDao().profile()) } finally { disk.close(); context.deleteDatabase(name) }
+        migration.createDatabase(name, 1).apply {
+            execSQL("INSERT INTO UserProfile VALUES ('local','Preserved',NULL,'',NULL,'SEDENTARY',0,'','',0,'MANUAL','CONFIRMED','COMPLETE',NULL,1,1)")
+            execSQL("INSERT INTO FoodEntry VALUES ('food','local',1,'UTC',0,'2026-10-18','Other',1,'op','MANUAL','CONFIRMED','COMPLETE',NULL,1,1)")
+            execSQL("INSERT INTO FoodComponent VALUES ('component','food','Original',1,'serving',100,2,20,1)")
+            close()
+        }
+        migration.runMigrationsAndValidate(name, 2, true, MIGRATION_1_2).close()
+        val disk = Room.databaseBuilder(context, MetricMeDatabase::class.java, name).addMigrations(MIGRATION_1_2).build()
+        try { assertEquals("Preserved", disk.profileDao().profile()!!.name); assertEquals(100.0, disk.loggingDao().foods().first().single().components.single().calories!!, 0.0) } finally { disk.close(); context.deleteDatabase(name) }
     }
 
     @Test fun retryDoesNotDuplicateMeasurementAndDeleteLeavesTargetHistory() = runBlocking {

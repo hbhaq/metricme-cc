@@ -14,6 +14,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val model = ViewModelProvider(this)[MetricMeViewModel::class.java]
-        setContent { MetricMeTheme { MetricMeApp(model) } }
+        val logging = ViewModelProvider(this)[LoggingViewModel::class.java]
+        setContent { MetricMeTheme { MetricMeApp(model, logging) } }
     }
 }

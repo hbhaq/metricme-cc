@@ -47,17 +47,24 @@ private val destinations = listOf(
 )
 
 @Composable
-fun MetricMeApp(model: MetricMeViewModel) {
+fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val form by model.formKind.collectAsStateWithLifecycle()
+    val logs by logging.state.collectAsStateWithLifecycle()
+    val logEditor by logging.editor.collectAsStateWithLifecycle()
+    var picker by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.demo) { logging.setDemo(state.demo) }
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "today"
     Scaffold(
+        floatingActionButton = {
+            if (!state.demo && !state.loading) ExtendedFloatingActionButton(onClick = { picker = true }, icon = { Icon(Icons.Outlined.Add, null) }, text = { Text("Log") })
+        },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 destinations.forEach { destination ->
-                    NavigationBarItem(selected = route == destination.route || (route == "measurements" && destination.route == "you"),
+                    NavigationBarItem(selected = route == destination.route || (route in setOf("measurements", "routines") && destination.route == "you"),
                         onClick = { nav.navigate(destination.route) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } },
                         icon = { Icon(destination.icon, contentDescription = null) }, label = { Text(destination.label) })
                 }
@@ -83,37 +90,40 @@ fun MetricMeApp(model: MetricMeViewModel) {
             else {
                 if (state.error != null && form.isEmpty()) ErrorMessage(state.error!!, model::clearError)
                 NavHost(navController = nav, startDestination = "today", modifier = Modifier.weight(1f)) {
-                    composable("today") { TodayScreen(state, model.today(), model::openProfile, { nav.navigate("you") }, { model.setDemo(true) }) }
-                    composable("journal") { JournalScreen(state, { nav.navigate("measurements") }) }
+                    composable("today") { if (state.demo) TodayScreen(state, model.today(), model::openProfile, { nav.navigate("you") }, { model.setDemo(true) }) else ManualTodayScreen(state, model, logs, logging, { nav.navigate("routines") }) }
+                    composable("journal") { if (state.demo) JournalScreen(state, { nav.navigate("measurements") }) else ManualJournalScreen(logs, logging, { nav.navigate("measurements") }) }
                     composable("insights") { InsightsScreen() }
-                    composable("you") { YouScreen(state, model, { nav.navigate("measurements") }) }
+                    composable("you") { YouScreen(state, model, { nav.navigate("measurements") }, { nav.navigate("routines") }) }
                     composable("measurements") { MeasurementScreen(state, model) { nav.popBackStack() } }
+                    composable("routines") { RoutinesScreen(logs, logging, state.demo) { nav.popBackStack() } }
                 }
             }
         }
     }
     if (form.isNotEmpty()) FormDialog(model, state, form)
+    if (logEditor.isNotEmpty() && !state.demo) LoggingEditor(logging, logs, logEditor)
+    if (picker && !state.demo) LogPicker(onDismiss = { picker = false }, onLog = { picker = false; logging.openLog(it) }, onRoutine = { picker = false; logging.openRoutine(it) })
 }
 
-@Composable private fun PageTitle(eyebrow: String, title: String, subtitle: String? = null) {
+@Composable internal fun PageTitle(eyebrow: String, title: String, subtitle: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(eyebrow.uppercase(Locale.ROOT), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
         Text(title, style = MaterialTheme.typography.headlineLarge)
         if (subtitle != null) Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
 }
-@Composable private fun BadgeText(label: String, icon: ImageVector? = null) {
+@Composable internal fun BadgeText(label: String, icon: ImageVector? = null) {
     Row(Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         if (icon != null) Icon(icon, null, Modifier.size(13.dp))
         Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
     }
 }
-@Composable private fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+@Composable internal fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
     }
 }
-@Composable private fun SectionLabel(title: String, caption: String? = null) {
+@Composable internal fun SectionLabel(title: String, caption: String? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
         if (caption != null) Text(caption, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -174,7 +184,7 @@ fun MetricMeApp(model: MetricMeViewModel) {
     }
 }
 
-@Composable private fun MiniMetric(title: String, value: String, detail: String, icon: ImageVector, modifier: Modifier) {
+@Composable internal fun MiniMetric(title: String, value: String, detail: String, icon: ImageVector, modifier: Modifier) {
     Panel(modifier) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.secondary)
         Text(title, style = MaterialTheme.typography.labelLarge)
@@ -185,7 +195,7 @@ fun MetricMeApp(model: MetricMeViewModel) {
 
 @Composable private fun JournalScreen(state: AppState, measurements: () -> Unit) {
     LazyColumn(contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        item { PageTitle("Your record", "Every day tells a story.", "Measurements are ready. Food, sleep, and activity logging follow in Stage 2.") }
+        item { PageTitle("Your record", "Every day tells a story.", "Read-only sample history. Exit demo to log your own food, sleep, activity and routines.") }
         item { Panel {
             Icon(Icons.AutoMirrored.Outlined.MenuBook, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp))
             Text("A place for the little things", style = MaterialTheme.typography.titleLarge)
@@ -208,11 +218,12 @@ fun MetricMeApp(model: MetricMeViewModel) {
     }
 }
 
-@Composable private fun YouScreen(state: AppState, model: MetricMeViewModel, history: () -> Unit) {
+@Composable private fun YouScreen(state: AppState, model: MetricMeViewModel, history: () -> Unit, routines: () -> Unit) {
     val locale = LocalLocale.current.platformLocale
     val target = HealthRules.historicalTarget(state.targets, model.today())
     LazyColumn(contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         item { PageTitle("Your foundation", "A routine that fits you.", "Your information stays on this device. Share only what feels right.") }
+        item { OutlinedButton(onClick = routines, enabled = !state.demo, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Checklist, null); Spacer(Modifier.width(8.dp)); Text("Habits, medications & reminders") } }
         item { Panel {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PersonOutline, null, Modifier.size(28.dp)) }
@@ -257,7 +268,7 @@ fun MetricMeApp(model: MetricMeViewModel) {
 @Composable private fun PrivacyNote() {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(Icons.Outlined.Lock, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Local storage uses Android’s app sandbox and device encryption. The database is not separately encrypted. No health data leaves this Stage 1 app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Local storage uses Android’s app sandbox and device encryption. The database is not separately encrypted. No health data leaves this build.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -290,7 +301,7 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
     if (deleting != null) AlertDialog(onDismissRequest = { deleting = null }, title = { Text("Delete this measurement?") }, text = { Text("This removes the measurement from your history. Stored historical target snapshots remain unchanged.") }, confirmButton = { TextButton(onClick = { deleting?.let(model::deleteMeasurement); deleting = null }) { Text("Delete") } }, dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep it") } })
 }
 
-@Composable private fun ErrorMessage(message: String, dismiss: (() -> Unit)? = null) {
+@Composable internal fun ErrorMessage(message: String, dismiss: (() -> Unit)? = null) {
     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }) {
         Column(Modifier.padding(16.dp)) { Text(message, color = MaterialTheme.colorScheme.onErrorContainer); if (dismiss != null) TextButton(onClick = dismiss) { Text("Dismiss") } }
     }
@@ -317,7 +328,7 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
     }
 }
 
-@Composable private fun Field(label: String, value: String, change: (String) -> Unit, hint: String? = null, numeric: Boolean = false, multiline: Boolean = false) {
+@Composable internal fun Field(label: String, value: String, change: (String) -> Unit, hint: String? = null, numeric: Boolean = false, multiline: Boolean = false) {
     OutlinedTextField(value = value, onValueChange = change, label = { Text(label) }, supportingText = hint?.let { { Text(it) } }, modifier = Modifier.fillMaxWidth(), singleLine = !multiline, minLines = if (multiline) 2 else 1, keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text), shape = RoundedCornerShape(14.dp))
 }
 @Composable private fun ProfileForm(model: MetricMeViewModel) {
@@ -342,12 +353,12 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
     Field("Allergies, restrictions, or preferences", restrictions, { model.text("restrictions", it) }, "Optional; available for future coaching", multiline = true)
     CheckRow("Display imperial units", "Storage and measurement entry remain in kg and cm.", imperial) { model.flag("imperial", it) }
 }
-@Composable private fun Choice(label: String, selected: Boolean, click: () -> Unit) {
+@Composable internal fun Choice(label: String, selected: Boolean, click: () -> Unit) {
     Surface(onClick = click, shape = RoundedCornerShape(14.dp), color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().semantics { role = Role.RadioButton; this.selected = selected }) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = selected, onClick = null); Spacer(Modifier.width(8.dp)); Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium) }
     }
 }
-@Composable private fun CheckRow(title: String, description: String, checked: Boolean, change: (Boolean) -> Unit) {
+@Composable internal fun CheckRow(title: String, description: String, checked: Boolean, change: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = checked, onCheckedChange = change, modifier = Modifier.semantics { contentDescription = title })
         Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.bodyMedium); Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }

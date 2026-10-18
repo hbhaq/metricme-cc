@@ -59,7 +59,7 @@ data class TargetEntity(
 data class FoodEntity(@PrimaryKey val id: String, val profileId: String, val instant: Long, val zoneId: String, val offsetSeconds: Int, val localDate: String, val mealType: String, val portionConsumed: Double, val operationKey: String, @Embedded val stamp: Stamp)
 
 @Entity(tableName = "FoodComponent", foreignKeys = [ForeignKey(entity = FoodEntity::class, parentColumns = ["id"], childColumns = ["foodId"], onDelete = ForeignKey.CASCADE)], indices = [Index("foodId")])
-data class FoodComponentEntity(@PrimaryKey val id: String, val foodId: String, val name: String, val quantity: Double, val unit: String, val calories: Double, val proteinGrams: Double, val carbsGrams: Double, val fatGrams: Double)
+data class FoodComponentEntity(@PrimaryKey val id: String, val foodId: String, val name: String, val quantity: Double, val unit: String, val calories: Double?, val proteinGrams: Double?, val carbsGrams: Double?, val fatGrams: Double?)
 
 @Entity(tableName = "ActivityEntry", foreignKeys = [ForeignKey(entity = ProfileEntity::class, parentColumns = ["id"], childColumns = ["profileId"], onDelete = ForeignKey.CASCADE)], indices = [Index(value = ["profileId", "localDate"]), Index("operationKey", unique = true)])
 data class ActivityEntity(@PrimaryKey val id: String, val profileId: String, val instant: Long, val zoneId: String, val offsetSeconds: Int, val localDate: String, val type: String, val durationSeconds: Long?, val reportedSteps: Int?, val intensity: String?, val notes: String, val operationKey: String, @Embedded val stamp: Stamp)
@@ -71,7 +71,7 @@ data class StepEntity(@PrimaryKey val id: String, val profileId: String, val ins
 data class SleepEntity(@PrimaryKey val id: String, val profileId: String, val bedtime: Long, val wakeTime: Long, val bedtimeZone: String, val wakeZone: String, val wakeDate: String, val quality: String?, val operationKey: String, @Embedded val stamp: Stamp)
 
 @Entity(tableName = "HabitDefinition", foreignKeys = [ForeignKey(entity = ProfileEntity::class, parentColumns = ["id"], childColumns = ["profileId"], onDelete = ForeignKey.CASCADE)], indices = [Index("profileId")])
-data class HabitEntity(@PrimaryKey val id: String, val profileId: String, val name: String, val selectedWeekdays: String, val archived: Boolean, @Embedded val stamp: Stamp)
+data class HabitEntity(@PrimaryKey val id: String, val profileId: String, val name: String, val selectedWeekdays: String, val archived: Boolean, @Embedded val stamp: Stamp, @ColumnInfo(defaultValue = "''") val notes: String = "")
 
 @Entity(tableName = "Medication", foreignKeys = [ForeignKey(entity = ProfileEntity::class, parentColumns = ["id"], childColumns = ["profileId"], onDelete = ForeignKey.CASCADE)], indices = [Index("profileId")])
 data class MedicationEntity(@PrimaryKey val id: String, val profileId: String, val name: String, val instructions: String, val doseText: String, val notes: String, val asNeeded: Boolean, val endedAt: Long?, @Embedded val stamp: Stamp)
@@ -80,13 +80,25 @@ data class MedicationEntity(@PrimaryKey val id: String, val profileId: String, v
 data class ScheduleEntity(@PrimaryKey val id: String, val profileId: String, val habitId: String?, val medicationId: String?, val wallTime: String, val weekdays: String, val zoneId: String, val active: Boolean)
 
 @Entity(tableName = "ScheduleVersion", foreignKeys = [ForeignKey(entity = ScheduleEntity::class, parentColumns = ["id"], childColumns = ["scheduleId"], onDelete = ForeignKey.CASCADE)], indices = [Index("scheduleId")])
-data class ScheduleVersionEntity(@PrimaryKey val id: String, val scheduleId: String, val effectiveFrom: Long, val effectiveUntil: Long?, val wallTime: String, val weekdays: String, val zoneId: String)
+data class ScheduleVersionEntity(@PrimaryKey val id: String, val scheduleId: String, val effectiveFrom: Long, val effectiveUntil: Long?, val wallTime: String, val weekdays: String, val zoneId: String, @ColumnInfo(defaultValue = "''") val labelSnapshot: String = "")
 
 @Entity(tableName = "HabitOccurrence", foreignKeys = [ForeignKey(entity = HabitEntity::class, parentColumns = ["id"], childColumns = ["habitId"], onDelete = ForeignKey.CASCADE), ForeignKey(entity = ScheduleVersionEntity::class, parentColumns = ["id"], childColumns = ["versionId"], onDelete = ForeignKey.CASCADE)], indices = [Index("habitId"), Index(value = ["versionId", "scheduledAt"], unique = true)])
-data class HabitOccurrenceEntity(@PrimaryKey val id: String, val habitId: String, val versionId: String, val scheduledAt: Long, val offsetSeconds: Int, val status: String, @Embedded val stamp: Stamp)
+data class HabitOccurrenceEntity(@PrimaryKey val id: String, val habitId: String, val versionId: String, val scheduledAt: Long, val offsetSeconds: Int, val status: String, @Embedded val stamp: Stamp, @ColumnInfo(defaultValue = "''") val labelSnapshot: String = "")
 
 @Entity(tableName = "MedicationOccurrence", foreignKeys = [ForeignKey(entity = MedicationEntity::class, parentColumns = ["id"], childColumns = ["medicationId"], onDelete = ForeignKey.CASCADE), ForeignKey(entity = ScheduleVersionEntity::class, parentColumns = ["id"], childColumns = ["versionId"], onDelete = ForeignKey.CASCADE)], indices = [Index("medicationId"), Index(value = ["versionId", "scheduledAt"], unique = true)])
-data class MedicationOccurrenceEntity(@PrimaryKey val id: String, val medicationId: String, val versionId: String, val scheduledAt: Long, val offsetSeconds: Int, val status: String, val snoozedUntil: Long?, @Embedded val stamp: Stamp)
+data class MedicationOccurrenceEntity(@PrimaryKey val id: String, val medicationId: String, val versionId: String, val scheduledAt: Long, val offsetSeconds: Int, val status: String, val snoozedUntil: Long?, @Embedded val stamp: Stamp, @ColumnInfo(defaultValue = "''") val labelSnapshot: String = "")
+
+@Entity(tableName = "ExerciseEntry", foreignKeys = [ForeignKey(entity = ActivityEntity::class, parentColumns = ["id"], childColumns = ["activityId"], onDelete = ForeignKey.CASCADE)], indices = [Index("activityId")])
+data class ExerciseEntity(@PrimaryKey val id: String, val activityId: String, val name: String, val sets: Int?, val reps: Int?, val loadKg: Double?)
+
+@Entity(tableName = "MedicationPrn", foreignKeys = [ForeignKey(entity = MedicationEntity::class, parentColumns = ["id"], childColumns = ["medicationId"], onDelete = ForeignKey.CASCADE)], indices = [Index("medicationId"), Index("operationKey", unique = true)])
+data class PrnEntity(@PrimaryKey val id: String, val medicationId: String, val instant: Long, val zoneId: String, val offsetSeconds: Int, val labelSnapshot: String, val notes: String, val operationKey: String, @Embedded val stamp: Stamp)
+
+@Entity(tableName = "ReminderDelivery", foreignKeys = [ForeignKey(entity = HabitOccurrenceEntity::class, parentColumns = ["id"], childColumns = ["habitOccurrenceId"], onDelete = ForeignKey.CASCADE), ForeignKey(entity = MedicationOccurrenceEntity::class, parentColumns = ["id"], childColumns = ["medicationOccurrenceId"], onDelete = ForeignKey.CASCADE)], indices = [Index("habitOccurrenceId", unique = true), Index("medicationOccurrenceId", unique = true), Index("dueAt")])
+data class DeliveryEntity(@PrimaryKey val occurrenceId: String, val habitOccurrenceId: String?, val medicationOccurrenceId: String?, val dueAt: Long, val deliveredFor: Long? = null)
+
+@Entity(tableName = "ReminderSettings")
+data class ReminderSettingsEntity(@PrimaryKey val id: String = "local", val enabled: Boolean = false)
 
 @Entity(tableName = "Draft", foreignKeys = [ForeignKey(entity = ProfileEntity::class, parentColumns = ["id"], childColumns = ["profileId"], onDelete = ForeignKey.CASCADE)], indices = [Index("profileId"), Index("operationKey", unique = true)])
 data class DraftEntity(@PrimaryKey val id: String, val profileId: String, val kind: String, val revision: Int, val localMediaPath: String?, val content: String, val operationKey: String, @Embedded val stamp: Stamp)

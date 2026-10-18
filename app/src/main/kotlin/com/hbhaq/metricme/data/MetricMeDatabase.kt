@@ -24,7 +24,10 @@ interface ProfileDao {
     FoodEntity::class, FoodComponentEntity::class, ActivityEntity::class, StepEntity::class, SleepEntity::class,
     HabitEntity::class, MedicationEntity::class, ScheduleEntity::class, ScheduleVersionEntity::class,
     HabitOccurrenceEntity::class, MedicationOccurrenceEntity::class, DraftEntity::class,
-    ProcessingJobEntity::class, ReportEntity::class, ReceiptEntity::class, TombstoneEntity::class], version = 1, exportSchema = true)
+    ProcessingJobEntity::class, ReportEntity::class, ReceiptEntity::class, TombstoneEntity::class,
+    ExerciseEntity::class, PrnEntity::class, DeliveryEntity::class, ReminderSettingsEntity::class], version = 2, exportSchema = true)
 abstract class MetricMeDatabase : RoomDatabase() {
     abstract fun profileDao(): ProfileDao
+    abstract fun loggingDao(): LoggingDao
+    abstract fun routineDao(): RoutineDao
 }

@@ -14,14 +14,14 @@ class NavigationTest {
 
     @Test fun profileDraftSurvivesRotationAndCancelDoesNotSave() {
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Set up your profile"))
-        compose.onNodeWithText("Set up your profile").performClick()
+        compose.onNodeWithText("You").performClick()
+        val edit = hasText("Create profile") or hasText("Edit profile")
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(edit)
+        compose.onNode(edit).performClick()
         compose.onNodeWithText("What should we call you?").performTextInput("Unsaved draft")
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("Unsaved draft").assertExists()
         compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithText("Set up your profile").assertExists()
-        compose.onNodeWithText("You").performClick()
         compose.onNodeWithText("Unsaved draft").assertDoesNotExist()
     }
 
@@ -37,6 +37,6 @@ class NavigationTest {
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
         compose.onNodeWithText("Exit demo").performClick()
         compose.onNodeWithText("You").performClick()
-        compose.onNodeWithText("Create profile").assertExists()
+        compose.onNodeWithText("Alex").assertDoesNotExist()
     }
 }

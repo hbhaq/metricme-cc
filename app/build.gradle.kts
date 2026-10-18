@@ -12,8 +12,8 @@ android {
         applicationId = "com.hbhaq.metricme"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
@@ -45,6 +45,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(libs.coroutines.android)
+    implementation(libs.work.runtime)
     debugImplementation(libs.compose.tooling)
     debugImplementation(libs.compose.test.manifest)
     testImplementation(libs.junit)
@@ -54,5 +55,6 @@ dependencies {
     androidTestImplementation(libs.compose.test)
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.android.test.runner)
+    androidTestImplementation(libs.android.test.rules)
     androidTestImplementation(libs.android.test.junit)
 }
