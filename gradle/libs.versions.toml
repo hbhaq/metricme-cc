@@ -12,6 +12,9 @@ coroutines = "1.10.2"
 serialization = "1.8.1"
 ktor = "3.4.3"
 retrofit = "3.0.0"
+postgres = "42.7.14"
+hikari = "7.1.0"
+logback = "1.6.5"
 work = "2.12.0"
 junit = "4.13.2"
 androidTest = "1.7.0"
@@ -22,6 +25,9 @@ serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-jso
 retrofit-core = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 retrofit-json = { module = "com.squareup.retrofit2:converter-kotlinx-serialization", version.ref = "retrofit" }
 appauth = { module = "net.openid:appauth", version = "0.11.1" }
+backend-postgres = { module = "org.postgresql:postgresql", version.ref = "postgres" }
+backend-pool = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+backend-logging = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-tooling = { module = "androidx.compose.ui:ui-tooling" }

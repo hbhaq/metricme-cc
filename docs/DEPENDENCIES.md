@@ -1,4 +1,4 @@
-# Stage 1 dependency decisions
+# Dependency decisions
 
 Checked 2026-10-18 using official docs and actual published Maven/SDK metadata. Exact pins live in `gradle/libs.versions.toml`; actual resolution/build results live in the stage report.
 
@@ -13,3 +13,13 @@ Checked 2026-10-18 using official docs and actual published Maven/SDK metadata. 
 The Gradle distribution SHA-256 is recorded in wrapper properties after verifying the downloaded archive against the published checksum. JDK and Android tools are ignored build-time installations. Dependency artifact verification metadata will be generated and reviewed after dependency resolution; do not claim cryptographic verification for all artifacts before that review.
 
 Stage 2 adds WorkManager runtime 2.12.0 and AndroidX test rules 1.7.0. The Android alarm/notification guidance and WorkManager release documentation were rechecked; see REMINDERS.md. The rest of the verified toolchain is retained. Room schema 2 uses an explicit non-destructive Migration(1, 2).
+
+Stage 3 retains the Android toolchain and adds:
+
+- Ktor 3.4.3, an explicitly pinned stable release used with the existing Kotlin 2.3/JDK 17 build, rather than a claim to the newest Ktor release. Official release history: https://ktor.io/docs/releases.html . Actual compilation and test-host/container behavior are verified in CI.
+- Retrofit and its kotlinx.serialization converter 3.0.0, published under Square's Maven coordinates. AppAuth Android 0.11.1 uses the system-browser code + PKCE flow: https://github.com/openid/AppAuth-Android . No client secret or manual bearer-token entry UI is used.
+- PostgreSQL JDBC 42.7.14, including the October 2026 security fixes documented in https://github.com/pgjdbc/pgjdbc/releases/tag/REL42.7.14 . HikariCP 7.1.0 is the Java 11+ artifact documented in https://github.com/brettwooldridge/HikariCP ; TCP keepalive is enabled and the pool is bounded at four connections.
+- Logback 1.6.5 includes current logging security fixes: https://github.com/qos-ch/logback/releases/tag/v_1.6.5 . Its published source targets Java 11 at runtime; the container verifies it on JRE 17. No dynamic scanning, Janino, network/file appenders, MDC-discriminated paths or request-body logging are configured.
+- OpenAI `gpt-4.1-mini` is configurable and documented to support image input and structured outputs: https://developers.openai.com/api/docs/models/gpt-4.1-mini . The Responses adapter uses strict `text.format` JSON schema and `store:false`: https://developers.openai.com/api/docs/guides/structured-outputs . WAV uses the file-transcription endpoint with configurable `gpt-4o-mini-transcribe`: https://developers.openai.com/api/docs/guides/speech-to-text . Account access and live paid behavior were not tested; mocks verify the wire formats and failure handling.
+
+These pins and selected release notes do not constitute an exhaustive dependency/CVE audit or a production-readiness claim. CI tests compatibility; Stage 5 retains the release review.

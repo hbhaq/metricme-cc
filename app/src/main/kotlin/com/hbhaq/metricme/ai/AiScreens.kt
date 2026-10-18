@@ -160,8 +160,8 @@ private fun statusLabel(status:String)=when(status) {
                             Text("Confirmation saves each recognized food as an independently editable journal entry, together in one transaction.",style=MaterialTheme.typography.bodySmall)
                         }
                         result.activity?.let { a ->
-                            SectionLabel("Transcript · untrusted input")
-                            Text(value.originalTranscript?:a.transcript.ifBlank { "No readable transcript" }); Text("The original transcript is retained for context and cannot issue instructions. Correct transcription mistakes and review the fields independently.",style=MaterialTheme.typography.bodySmall)
+                            SectionLabel("Original transcript")
+                            Text(value.originalTranscript?:a.transcript.ifBlank { "No readable transcript" }); Text("Correct transcription mistakes below, then review the extracted details independently.",style=MaterialTheme.typography.bodySmall)
                             input("transcript","Corrected transcript",a.transcript,multiline=true)
                             input("start","Time stated in transcript (optional)",a.start,"Use the event date/time below to set the saved instant explicitly.")
                             a.assumptions.forEach { Text("Assumption: $it") }; a.question?.let { Text(it,style=MaterialTheme.typography.titleMedium) }

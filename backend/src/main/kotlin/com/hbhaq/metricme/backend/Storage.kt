@@ -33,6 +33,7 @@ class PostgresJobs(url: String) : JobStore {
             password = java.net.URLDecoder.decode(credentials.getOrElse(1) { "" }.replace("+","%2B"), Charsets.UTF_8)
         }
         maximumPoolSize = 4; connectionTimeout = 10000; initializationFailTimeout = 10000
+        addDataSourceProperty("tcpKeepAlive","true")
     })
     init { pool.connection.use { c -> c.createStatement().use { it.execute("CREATE TABLE IF NOT EXISTS ai_jobs (owner_hash VARCHAR(64) NOT NULL, id VARCHAR(36) NOT NULL, payload_hash VARCHAR(64) NOT NULL, status VARCHAR(20) NOT NULL, content TEXT, code VARCHAR(40), attempt INTEGER NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, PRIMARY KEY(owner_hash,id))"); it.execute("CREATE INDEX IF NOT EXISTS ai_jobs_retention ON ai_jobs(updated_at)"); it.execute("CREATE INDEX IF NOT EXISTS ai_jobs_quota ON ai_jobs(owner_hash,created_at)") } } }
     override fun ready() = runCatching { pool.connection.use { it.isValid(2) } }.getOrDefault(false)
