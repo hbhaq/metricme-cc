@@ -10,7 +10,7 @@ import java.time.*
 import java.util.UUID
 import javax.inject.Inject
 
-@Serializable data class DraftContent(val context:String="",val mime:String="",val time:String,val zone:String,val offset:String="",val result:AiResult?=null,val error:String?=null,val binding:String?=null,val backend:String?=null,val meal:String="Other")
+@Serializable data class DraftContent(val context:String="",val mime:String="",val time:String,val zone:String,val offset:String="",val result:AiResult?=null,val error:String?=null,val binding:String?=null,val backend:String?=null,val meal:String="Other",val originalTranscript:String?=null)
 data class AiDraft(val row:DraftEntity,val value:DraftContent)
 @Dao interface AiDao {
     @Query("SELECT * FROM Draft WHERE profileId='local' ORDER BY createdAt DESC") fun observe():kotlinx.coroutines.flow.Flow<List<DraftEntity>>
@@ -64,7 +64,7 @@ class AiDraftRepository @Inject constructor(private val db:MetricMeDatabase,priv
         val row=dao.draft(id)?:return@withTransaction false; val job=dao.job(id)?:return@withTransaction false
         if(dao.tombstone(id)!=null || row.revision!=job.revision || job.id!=jobId || job.status=="CANCELLED" || row.stamp.processing=="CONFIRMED") return@withTransaction false
         val value=WireJson.decodeFromString<DraftContent>(row.content)
-        dao.draft(row.copy(content=WireJson.encodeToString(value.copy(result=result,error=null)),stamp=row.stamp.copy(processing="READY",confidence=result.food?.confidence,updatedAt=clock.millis())))
+        dao.draft(row.copy(content=WireJson.encodeToString(value.copy(result=result,error=null,originalTranscript=result.activity?.transcript)),stamp=row.stamp.copy(processing="READY",confidence=result.food?.confidence,updatedAt=clock.millis())))
         dao.job(job.copy(status="READY",updatedAt=clock.millis())); true
     }
     suspend fun cancel(id:String,delete:Boolean):String?=db.withTransaction {
@@ -73,7 +73,7 @@ class AiDraftRepository @Inject constructor(private val db:MetricMeDatabase,priv
         dao.tombstone(TombstoneEntity(id,clock.millis(),job!=null))
         if(delete && job==null) { dao.remove(id); return@withTransaction row.localMediaPath }
         if(delete) { /* Keep a media-free tombstoned shell until remote purge is acknowledged. */
-            dao.draft(row.copy(localMediaPath=null,content=WireJson.encodeToString(WireJson.decodeFromString<DraftContent>(row.content).copy(context="",result=null,error=null)),stamp=row.stamp.copy(processing="DELETED")))
+            dao.draft(row.copy(localMediaPath=null,content=WireJson.encodeToString(WireJson.decodeFromString<DraftContent>(row.content).copy(context="",result=null,error=null,originalTranscript=null)),stamp=row.stamp.copy(processing="DELETED")))
         } else {
             val value=WireJson.decodeFromString<DraftContent>(row.content)
             dao.draft(row.copy(revision=row.revision+1,content=WireJson.encodeToString(value.copy(error="Upload cancelled. Local draft retained.")),stamp=row.stamp.copy(processing="CANCELLED")))

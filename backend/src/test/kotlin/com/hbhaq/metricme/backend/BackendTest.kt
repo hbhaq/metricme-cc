@@ -57,6 +57,7 @@ class BackendTest {
     }
     @Test fun canonicalWavBoundsAndInvalidSignaturesAreEnforced() {
         val bytes=java.nio.ByteBuffer.allocate(44+3200).order(java.nio.ByteOrder.LITTLE_ENDIAN).apply { put("RIFF".toByteArray()); putInt(capacity()-8); put("WAVEfmt ".toByteArray()); putInt(16); putShort(1); putShort(1); putInt(16000); putInt(32000); putShort(2); putShort(16); put("data".toByteArray()); putInt(capacity()-44) }.array()
+        assertThrows(ApiFailure::class.java) { MediaValidation.audio(bytes,"audio/wav") }; bytes[44]=1
         MediaValidation.audio(bytes,"audio/wav"); bytes[0]=0; assertThrows(ApiFailure::class.java) { MediaValidation.audio(bytes,"audio/wav") }
         assertThrows(ApiFailure::class.java) { MediaValidation.decode(photoRequest().copy(mediaBase64="A".repeat(15*1024*1024)),"FOOD") }
     }

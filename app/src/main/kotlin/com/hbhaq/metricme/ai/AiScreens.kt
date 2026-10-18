@@ -60,7 +60,7 @@ import kotlinx.coroutines.withContext
             Text("Record up to two minutes. Only stated activity details are extracted; missing steps stay unknown. Recording stops when you leave this screen.")
             if(demo) Button(onClick={ sample="ACTIVITY" }) { Text("Try sample activity review") } else {
                 Text(if(recording.active) "Recording · ${recording.seconds}s / 120s" else recording.path?.let { "Recording ready · ${recording.seconds}s" }?:"Microphone is off")
-                if(recording.active) Button(onClick=model.recorder::stop) { Text("Stop recording") }
+                if(recording.active) { Button(onClick=model.recorder::stop) { Text("Stop recording") }; TextButton(onClick=model.recorder::discard) { Text("Cancel recording") } }
                 else if(recording.path!=null) { Button(onClick=model::keepAudio,enabled=!busy) { Text("Keep audio draft") }; TextButton(onClick=model.recorder::discard) { Text("Discard recording") } }
                 else Button(onClick={ if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) model.startAudio() else microphone.launch(Manifest.permission.RECORD_AUDIO) },enabled=!busy) { Text("Record activity") }
                 recording.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
@@ -121,6 +121,8 @@ private fun statusLabel(status:String)=when(status) {
     val fields by model.fields.collectAsStateWithLifecycle(); val dirty by model.dirty.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle(); val error by model.error.collectAsStateWithLifecycle()
     var consent by rememberSaveable(row.row.id) { mutableStateOf(false) }; var deleting by rememberSaveable(row.row.id) { mutableStateOf(false) }
+    val replacementPicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if(uri!=null) model.importPhoto(uri,replaceId=row.row.id) }
+    val replacementCamera=rememberLauncherForActivityResult(ActivityResultContracts.TakePicture(),model::cameraResult)
     val value=row.value; val result=value.result
     val locked=row.row.stamp.processing in listOf("QUEUED","RUNNING","RETRYABLE","AUTH_REQUIRED")
     LaunchedEffect(row.row.content) { model.sync(row) }
@@ -135,6 +137,10 @@ private fun statusLabel(status:String)=when(status) {
                     PageTitle("Draft · not in your totals",if(row.row.kind=="FOOD") "A closer look at your meal" else "Your activity, in your words",statusLabel(row.row.stamp.processing))
                     error?.let { ErrorMessage(it) }; value.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }; if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if(row.row.kind=="FOOD" && row.row.localMediaPath!=null) PhotoPreview(row.row.localMediaPath)
+                    if(row.row.kind=="FOOD" && !locked) Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick={ try { replacementCamera.launch(model.cameraUri(row.row.id)) } catch(_:Exception) { model.cameraResult(false); model.error.value="Camera unavailable. Choose another photo instead." } },enabled=!busy) { Text("Retake photo") }
+                        TextButton(onClick={ replacementPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },enabled=!busy) { Text("Replace photo") }
+                    }
                     if(row.row.kind=="ACTIVITY") Text("Audio draft stored privately. You can review and correct the transcript and extracted fields after processing.")
                     input("context","Optional context",value.context,"Serving size, ingredients, shared plate or details you want considered",true)
                     if(result!=null) {
@@ -155,7 +161,9 @@ private fun statusLabel(status:String)=when(status) {
                         }
                         result.activity?.let { a ->
                             SectionLabel("Transcript · untrusted input")
-                            Text(a.transcript.ifBlank { "No readable transcript" }); Text("Correct the extracted fields below. The original transcript is retained for context and cannot issue instructions.",style=MaterialTheme.typography.bodySmall)
+                            Text(value.originalTranscript?:a.transcript.ifBlank { "No readable transcript" }); Text("The original transcript is retained for context and cannot issue instructions. Correct transcription mistakes and review the fields independently.",style=MaterialTheme.typography.bodySmall)
+                            input("transcript","Corrected transcript",a.transcript,multiline=true)
+                            input("start","Time stated in transcript (optional)",a.start,"Use the event date/time below to set the saved instant explicitly.")
                             a.assumptions.forEach { Text("Assumption: $it") }; a.question?.let { Text(it,style=MaterialTheme.typography.titleMedium) }
                             input("type","Activity name",a.type); input("minutes","Duration in minutes (optional)",a.durationMinutes?.toString()); input("steps","Explicitly reported steps (optional)",a.steps?.toString(),"Leave blank when steps were not stated or measured.")
                             input("intensity","Perceived intensity (optional)",a.intensity)

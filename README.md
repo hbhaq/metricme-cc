@@ -2,7 +2,7 @@
 
 A calm, local-first native Android habit and health journal. Kotlin, Jetpack Compose Material 3, Hilt, Room, and a pure Kotlin domain module.
 
-**Current delivery: Stage 2.** Profile/measurement history, energy targets, offline food/activity/steps/sleep logging, habits and medication occurrences, private local reminders, and isolated read-only sample data. AI and the Railway Ktor backend are Stage 3; analytics/coaching are Stage 4; final privacy/deletion and accessibility verification are Stage 5. Do not use this development build as medical advice.
+**Current implementation: Stage 3.** Native offline logging and reminders now include private photo/audio drafts, editable AI review, consented offline uploads, OIDC sign-in and a Ktor/PostgreSQL backend. Verification is recorded in the stage report. Railway deployment is blocked by the account's free-plan resource limit; real AI stays locked until server-side credentials and OIDC are configured. Analytics/coaching are Stage 4; final privacy/deletion and accessibility are Stage 5. Do not use this development build as medical advice.
 
 <img src="docs/screenshots/today.png" width="320" alt="MetricMe Today screen captured from the real Android app on the CI emulator">
 
@@ -31,6 +31,10 @@ Use **Log** for food, activity/workouts, daily steps, sleep, habits/vitamins or 
 
 Open **You → Habits, medications & reminders** to manage routines and enable optional notifications. Scheduled occurrences are tracked separately, as-needed use is recorded separately, and a missed alert does not imply a missed dose. Read [the reminder behavior and limitations](docs/REMINDERS.md).
 
+Use **Log → Photo or audio draft**, or **You → Photo, audio & private drafts**. Take/select a photo or record a short activity note, keep it locally, optionally add context, and explicitly consent before queuing an upload. Review/edit the result and confirm before it enters totals. Food batches save as independently editable entries in one transaction. Cancelled/deleted drafts cannot be populated by late results. Demo mode offers labeled local sample reviews without credentials or personal writes.
+
+See [deployment and sign-in setup](docs/DEPLOYMENT.md) for the Ktor API, Docker image, PostgreSQL, Railway variables and public Android connection settings. No OpenAI key belongs in Android.
+
 ## Rules that matter
 
 - Missing is distinct from zero. AI drafts will not count toward confirmed totals.
@@ -42,10 +46,10 @@ Open **You → Habits, medications & reminders** to manage routines and enable o
 
 ## Privacy and scope
 
-Notifications are opt-in; no camera, microphone or photo/storage access is requested. Stage 2 makes no health-data network calls. Room uses the Android app sandbox and device file-based encryption; it is **not separately database-encrypted**. Cloud backup and device transfer are excluded. No API key is required or embedded. Full in-app deletion controls arrive in Stage 5; uninstalling clears the application sandbox now. Do not enter sensitive real data into an unreviewed development build.
+Notifications and microphone access are contextual and optional. Photo Picker needs no blanket storage permission; external camera capture uses a scoped FileProvider. Media stays private until the user explicitly consents to an authenticated upload. Room uses the Android app sandbox and device file-based encryption; it is **not separately database-encrypted**. Session state is separately encrypted with an Android Keystore key. Cloud backup and device transfer are excluded. No OpenAI key is embedded. Pending media expires after seven days, confirmed media within 24 hours, and deleted media immediately; force-stopped cleanup resumes on the next permitted run. Complete account deletion controls arrive in Stage 5. Do not enter sensitive real data into an unreviewed development build.
 
-No backend is deployed in Stage 2. Railway will host the Ktor API, while Android UI ships as an APK. GitHub upload and Railway deployment have been authorized by the user, subject to service access. The staged brief requires stopping after each stage until “continue.”
+Railway will host the Ktor API, while Android UI ships as an APK. Railway rejected new provisioning with “Free plan resource provision limit exceeded”; no live MetricMe URL exists yet. GitHub upload and deployment are authorized, but no existing apps or paid plan were changed to bypass this limit. The staged brief requires stopping after each stage until “continue.”
 
 [Stage 2 passing checks and debug APK](https://github.com/hbhaq/metricme-cc/actions/runs/39140255260) — 29 domain tests and 19 emulator tests passed; lint completed with 0 errors and 3 style warnings.
 
-See [the approved planning document](STAGE-0-PLAN.md), [Stage 1 report](docs/STAGE-1-REPORT.md) and [Stage 2 verification report](docs/STAGE-2-REPORT.md).
+See [the approved planning document](STAGE-0-PLAN.md), [Stage 1 report](docs/STAGE-1-REPORT.md), [Stage 2 verification report](docs/STAGE-2-REPORT.md) and [Stage 3 verification report](docs/STAGE-3-REPORT.md).

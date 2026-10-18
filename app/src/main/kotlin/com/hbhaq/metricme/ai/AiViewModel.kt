@@ -28,10 +28,19 @@ import javax.inject.Inject
         if(busy.value) return; busy.value=true; error.value=null
         viewModelScope.launch { try { block() } catch(e:CancellationException) { throw e } catch(e:IllegalArgumentException) { error.value=e.message?.take(300)?:"Check the entered values." } catch(_:Exception) { error.value="This action could not finish. Your saved draft is safe. Check sign-in, storage and connection." } finally { busy.value=false } }
     }
-    fun cameraUri():Uri { val file=media.newFile("jpg"); saved["aiCamera"]=file.path; return media.uri(file) }
-    fun cameraResult(success:Boolean) { val path:String=saved["aiCamera"]?:return; saved["aiCamera"]=null; if(success) importPhoto(media.uri(media.owned(path)),path) else media.delete(path) }
-    fun importPhoto(uri:Uri,temporary:String?=null)=launch {
-        try { val file=media.importPhoto(uri); val id=repository.create("FOOD",file.path,"image/jpeg"); repository.dao.draft(id)?.let { select(AiDraft(it,WireJson.decodeFromString(it.content))) } } finally { media.delete(temporary) }
+    fun cameraUri(replaceId:String?=null):Uri { val file=media.newFile("jpg"); saved["aiCamera"]=file.path; saved["aiCameraReplace"]=replaceId; return media.uri(file) }
+    fun cameraResult(success:Boolean) { val path:String=saved["aiCamera"]?:return; val replacement:String?=saved["aiCameraReplace"]; saved["aiCamera"]=null; saved["aiCameraReplace"]=null; if(success) importPhoto(media.uri(media.owned(path)),path,replacement) else media.delete(path) }
+    fun importPhoto(uri:Uri,temporary:String?=null,replaceId:String?=null)=launch {
+        try {
+            val previous=replaceId?.let { repository.dao.draft(it) }?.let { AiDraft(it,WireJson.decodeFromString<DraftContent>(it.content)) }
+            val file=media.importPhoto(uri); val id=repository.create("FOOD",file.path,"image/jpeg")
+            if(previous!=null) {
+                val fresh=repository.dao.draft(id)!!
+                repository.edit(id,fresh.revision,previous.value.copy(mime="image/jpeg",context=field("context",previous.value.context),time=field("time",previous.value.time),zone=field("zone",previous.value.zone),offset=field("offset",previous.value.offset),result=null,error=null,binding=null,backend=null,originalTranscript=null))
+                queue.cancel(previous.row.id,true)
+            }
+            repository.dao.draft(id)?.let { select(AiDraft(it,WireJson.decodeFromString(it.content))) }
+        } finally { media.delete(temporary) }
     }
     fun startAudio() { try { recorder.start() } catch(_:Exception) { error.value="Microphone unavailable. Check permission or use manual logging." } }
     fun keepAudio()=launch {
@@ -45,7 +54,7 @@ import javax.inject.Inject
         fun integer(key:String,old:Int?):Int? { val raw=text(key,old?.toString())?:return null; return raw.toIntOrNull()?:throw IllegalArgumentException("Steps, sets and reps need whole numbers.") }
         val result=value.result?.let { r ->
             if(r.kind=="FOOD") r.copy(food=r.food!!.let { f -> f.copy(items=f.items.mapIndexed { i,item -> item.copy(name=text("f$i.name",item.name).orEmpty(),quantity=number("f$i.quantity",item.quantity)?:0.0,unit=text("f$i.unit",item.unit).orEmpty(),calories=number("f$i.calories",item.calories),protein=number("f$i.protein",item.protein),carbs=number("f$i.carbs",item.carbs),fat=number("f$i.fat",item.fat)) },portionConsumed=(number("portion",f.portionConsumed*100)?:100.0)/100,needsClarification=field("clarification",f.needsClarification.toString())=="true") })
-            else r.copy(activity=r.activity!!.let { a -> a.copy(type=text("type",a.type),durationMinutes=number("minutes",a.durationMinutes),steps=integer("steps",a.steps),intensity=text("intensity",a.intensity),needsClarification=field("clarification",a.needsClarification.toString())=="true",exercises=field("exercises",a.exercises.joinToString("\n") { "${it.name} | ${it.sets?:""} | ${it.reps?:""} | ${it.loadKg?:""}" }).lineSequence().filter(String::isNotBlank).map { line ->
+            else r.copy(activity=r.activity!!.let { a -> a.copy(transcript=text("transcript",a.transcript).orEmpty(),start=text("start",a.start),type=text("type",a.type),durationMinutes=number("minutes",a.durationMinutes),steps=integer("steps",a.steps),intensity=text("intensity",a.intensity),needsClarification=field("clarification",a.needsClarification.toString())=="true",exercises=field("exercises",a.exercises.joinToString("\n") { "${it.name} | ${it.sets?:""} | ${it.reps?:""} | ${it.loadKg?:""}" }).lineSequence().filter(String::isNotBlank).map { line ->
                 val parts=line.split('|').map(String::trim); require(parts.size in 1..4) { "Use name | sets | reps | load in kg for exercises." }
                 fun part(i:Int)=parts.getOrNull(i)?.takeIf(String::isNotBlank)
                 ExerciseEstimate(parts[0],part(1)?.let { it.toIntOrNull()?:throw IllegalArgumentException("Sets need a whole number.") },part(2)?.let { it.toIntOrNull()?:throw IllegalArgumentException("Reps need a whole number.") },part(3)?.let { it.toDoubleOrNull()?:throw IllegalArgumentException("Load needs a number in kg.") })

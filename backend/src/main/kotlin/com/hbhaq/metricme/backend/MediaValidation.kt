@@ -35,5 +35,6 @@ object MediaValidation {
         fun ascii(at:Int,n:Int)=String(bytes,at,n,Charsets.US_ASCII)
         // Deliberately accept our bounded, canonical PCM recorder format only.
         if(ascii(0,4)!="RIFF" || ascii(8,4)!="WAVE" || ascii(12,4)!="fmt " || b.getInt(16)!=16 || b.getShort(20).toInt()!=1 || b.getShort(22).toInt()!=1 || b.getInt(24)!=16000 || b.getInt(28)!=32000 || b.getShort(32).toInt()!=2 || b.getShort(34).toInt()!=16 || ascii(36,4)!="data" || b.getInt(40)!=bytes.size-44 || b.getInt(4)!=bytes.size-8 || (bytes.size-44)%2!=0 || bytes.size-44>120*32000) throw ApiFailure("invalid_audio",400)
+        if((44 until bytes.size step 2).all { b.getShort(it).toInt()==0 }) throw ApiFailure("silent_audio",422)
     }
 }
