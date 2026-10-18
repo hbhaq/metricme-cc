@@ -12,7 +12,7 @@ const val MAX_MEDIA = 10 * 1024 * 1024
 @Serializable data class ExerciseEstimate(val name: String, val sets: Int?, val reps: Int?, val loadKg: Double?)
 @Serializable data class ActivityEstimate(val transcript: String, val type: String?, val start: String?, val durationMinutes: Double?, val steps: Int?, val intensity: String?, val exercises: List<ExerciseEstimate>, val assumptions: List<String>, val needsClarification: Boolean, val question: String?)
 @Serializable data class AiResult(val kind: String, val food: FoodEstimate? = null, val activity: ActivityEstimate? = null, val model: String, val sample: Boolean = false)
-@Serializable data class JobResponse(val id: String, val status: String, val result: AiResult? = null, val code: String? = null, val retryable: Boolean = false)
+@Serializable data class JobResponse(val id: String, val status: String, val result: AiResult? = null, val code: String? = null, val retryable: Boolean = false, val retryAfterSeconds: Int? = null)
 @Serializable data class ApiError(val code: String, val retryable: Boolean = false, val requestId: String = "")
 @Serializable data class ServiceInfo(val status: String, val aiConfigured: Boolean, val authConfigured: Boolean)
 
@@ -48,4 +48,11 @@ object EstimateRules {
 object DemoEstimates {
     fun food() = AiResult("FOOD", food = FoodEstimate(listOf(FoodItem("Sample rice bowl", 1.0, "bowl", 420.0, 14.0, 62.0, 13.0)), listOf("Sample only: portion and ingredients are invented for this demonstration."), .6, false, null, 1.0), model = "local-sample", sample = true)
     fun activity() = AiResult("ACTIVITY", activity = ActivityEstimate("Sample: I walked for twenty minutes.", "Walk", null, 20.0, null, null, emptyList(), listOf("Sample only. No steps were stated, so steps remain unknown."), false, null), model = "local-sample", sample = true)
+}
+object RetryDelays {
+    const val MAX_SECONDS = 7 * 86400
+    fun seconds(header:String?,nowMillis:Long,defaultSeconds:Int=60):Int? {
+        val delay=header?.trim()?.toLongOrNull()?:header?.let { runCatching { ((java.time.ZonedDateTime.parse(it,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()-nowMillis+999)/1000).coerceAtLeast(0) }.getOrNull() }?:defaultSeconds.toLong()
+        return if(delay>MAX_SECONDS) null else delay.coerceAtLeast(1).toInt()
+    }
 }

@@ -44,6 +44,8 @@ class AiDraftDatabaseTest {
         val id=repo.create("FOOD","/private/test-media","image/jpeg"); repo.queue(id,"a","https://api.example.test/"); val row=repo.dao.draft(id)!!
         assertThrows(IllegalArgumentException::class.java) { runBlocking { repo.edit(id,row.revision,WireJson.decodeFromString(row.content)) } }
         val restored=AiDraftRepository(db,LocalMutations(db,clock),clock); assertEquals(id,restored.dao.draft(id)!!.id); assertEquals("QUEUED",restored.dao.recoverable().single().status)
+        val job=restored.dao.job(id)!!; val next=clock.millis()+120000; restored.status(id,job.id,"RETRYABLE",nextAttemptAt=next)
+        val afterRestart=AiDraftRepository(db,LocalMutations(db,clock),clock).dao.job(id)!!; assertEquals(next,afterRestart.nextAttemptAt); assertEquals(0,afterRestart.attempt)
     }
     @Test fun activityUnknownStepsRemainNullAfterConfirmation()=runBlocking {
         val id=ready("ACTIVITY",DemoEstimates.activity().copy(sample=false)); repo.confirm(id,repo.dao.draft(id)!!.revision)

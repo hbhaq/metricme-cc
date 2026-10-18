@@ -12,4 +12,9 @@ class EstimateRulesTest {
     @Test fun clarificationCanHaveNoItemsAndMacroMismatchIsWarning() { val r=DemoEstimates.food(); EstimateRules.validate(r.copy(food=r.food!!.copy(items=emptyList(),needsClarification=true,question="What portion did you eat?"))); assertTrue(EstimateRules.warnings(r.food.copy(items=r.food.items.map { it.copy(calories=1000.0) })).isNotEmpty()) }
     @Test(expected=Exception::class) fun malformedOrUnknownOutputRejected() { WireJson.decodeFromString<FoodEstimate>("{\"items\":[],\"override_instructions\":true}") }
     @Test(expected=IllegalArgumentException::class) fun excessiveActivityStepsRejected() { val r=DemoEstimates.activity(); EstimateRules.validate(r.copy(activity=r.activity!!.copy(steps=200001))) }
+    @Test fun retryAfterSupportsSecondsHttpDatesAndBoundedRetention() {
+        val now=java.time.Instant.parse("2026-10-18T12:00:00Z").toEpochMilli()
+        assertEquals(120,RetryDelays.seconds("120",now)); assertEquals(120,RetryDelays.seconds("Sun, 18 Oct 2026 12:02:00 GMT",now))
+        assertEquals(60,RetryDelays.seconds("invalid",now)); assertEquals(1,RetryDelays.seconds("0",now)); assertNull(RetryDelays.seconds("9999999999",now))
+    }
 }

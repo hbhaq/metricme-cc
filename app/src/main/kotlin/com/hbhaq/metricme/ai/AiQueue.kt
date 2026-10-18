@@ -78,9 +78,15 @@ class AiUploadWorker(context:Context,params:WorkerParameters):CoroutineWorker(co
         val repo=graph.drafts(); val id=inputData.getString("draftId")?:return Result.failure(); val jobId=inputData.getString("jobId")?:return Result.failure()
         val row=repo.dao.draft(id)?:return Result.success(); val job=repo.dao.job(id)?:return Result.success()
         if(job.id!=jobId || repo.dao.tombstone(id)!=null || job.status !in listOf("QUEUED","RUNNING","RETRYABLE","AUTH_REQUIRED")) return Result.success()
-        if(job.attempt>=5 || runAttemptCount>=5) { repo.status(id,jobId,"FAILED","Retry limit reached. Review before submitting again."); return Result.failure() }
+        if(job.attempt>=5) { repo.status(id,jobId,"FAILED","Retry limit reached. Review before submitting again."); return Result.failure() }
+        if((job.nextAttemptAt?:0)>System.currentTimeMillis()) return Result.retry()
         val value=WireJson.decodeFromString<DraftContent>(row.content)
         val binding=value.binding?:return Result.failure(); val backend=value.backend?:return Result.failure()
+        suspend fun retryLater(seconds:Int?,message:String):Result {
+            if(seconds==null || seconds !in 1..RetryDelays.MAX_SECONDS || job.attempt+1>=5) { repo.status(id,jobId,"FAILED","Retry limit or retention window reached. Review before submitting again."); return Result.failure() }
+            val deadline=System.currentTimeMillis()+maxOf(30,seconds)*1000L+kotlin.random.Random.nextLong(0,5001)
+            repo.status(id,jobId,"RETRYABLE",message,nextAttemptAt=deadline); return Result.retry()
+        }
         try {
             val token=try { graph.sessions().accessToken(binding) } catch(e:CancellationException) { throw e } catch(_:Exception) { repo.status(id,jobId,"AUTH_REQUIRED","Sign in with the account that queued this draft."); return Result.success() }
             val file=graph.files().owned(row.localMediaPath?:error("Media expired."))
@@ -93,14 +99,14 @@ class AiUploadWorker(context:Context,params:WorkerParameters):CoroutineWorker(co
             when {
                 response.code()==401 || response.code()==403 -> { repo.status(id,jobId,"AUTH_REQUIRED","Sign in again to continue."); return Result.success() }
                 response.code()==503 && safeCode=="not_configured" -> { repo.status(id,jobId,"FAILED","The service is not configured for real AI yet. Your draft stays on this device."); return Result.failure() }
-                response.code() in listOf(408,429) || response.code() in 500..599 -> { repo.status(id,jobId,"RETRYABLE","Temporary server issue. Retrying with the same operation key."); return Result.retry() }
+                response.code() in listOf(408,429) || response.code() in 500..599 -> return retryLater(RetryDelays.seconds(response.headers()["Retry-After"],System.currentTimeMillis(),30),"Temporary server issue. Waiting before retrying with the same operation key.")
                 !response.isSuccessful || result==null -> { repo.status(id,jobId,"FAILED",when(safeCode) { "silent_audio" -> "The recording is silent. Record a clear activity note or use manual entry."; "invalid_audio" -> "The recording format is invalid or too long. Record again in the app."; "upload_too_large","invalid_dimensions" -> "This media exceeds the service limits. Choose a smaller photo or shorter recording."; else -> "Request rejected. Check the media, connection configuration and consent." }); return Result.failure() }
                 result.status=="READY" && result.result!=null -> { if(!repo.apply(id,jobId,requireNotNull(result.result))) graph.queue().maintain(); return Result.success() }
-                result.status in listOf("RUNNING","RETRYABLE") -> { repo.status(id,jobId,"RETRYABLE","Processing or temporarily unavailable. Retrying safely."); return Result.retry() }
+                result.status in listOf("RUNNING","RETRYABLE") -> return retryLater(result.retryAfterSeconds?:30,"Processing or temporarily unavailable. Waiting before retrying safely.")
                 else -> { repo.status(id,jobId,"FAILED",when(result.code) { "refused" -> "The model declined this request. Use manual logging."; "upstream_uncertain" -> "The upstream outcome is uncertain. Automatic retries stopped. Review before making a new request."; else -> "No usable estimate was returned. Try clearer media or manual entry." }); return Result.failure() }
             }
         } catch(e:CancellationException) { throw e }
-        catch(_:java.io.IOException) { repo.status(id,jobId,"RETRYABLE","Offline or interrupted. Your draft is safe; retrying with the same key."); return Result.retry() }
+        catch(_:java.io.IOException) { return retryLater(30,"Offline or interrupted. Your draft is safe; retrying with the same key.") }
         catch(_:Exception) { repo.status(id,jobId,"FAILED","Could not process this draft. Check media and sign-in, or log manually."); return Result.failure() }
     }
 }

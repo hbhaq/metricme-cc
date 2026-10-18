@@ -20,7 +20,10 @@ class OpenAiGateway(private val key: String, private val visionModel: String = "
         catch (_: java.io.IOException) { throw ApiFailure("upstream_uncertain",502) }
         response.body().use { input ->
             val data=input.readNBytes(2*1024*1024+1)
-            if(response.statusCode()==429) throw ApiFailure("upstream_rate_limited",429,true)
+            if(response.statusCode()==429) {
+                val seconds=RetryDelays.seconds(response.headers().firstValue("Retry-After").orElse(null),System.currentTimeMillis())?:throw ApiFailure("retry_delay_exceeds_retention",422)
+                throw ApiFailure("upstream_rate_limited",429,true,seconds)
+            }
             if(response.statusCode()!=200) throw ApiFailure(if(response.statusCode() in 400..499) "upstream_rejected" else "upstream_uncertain",502)
             if(data.size>2*1024*1024) throw ApiFailure("invalid_ai_output",502)
             try { WireJson.parseToJsonElement(String(data,Charsets.UTF_8)).jsonObject } catch(_: Exception) { throw ApiFailure("invalid_ai_output",502) }

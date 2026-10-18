@@ -45,4 +45,31 @@ class AiFlowTest {
             compose.onNodeWithText("Close draft").performClick()
         } finally { graph.queue().cancel(id,true) }
     }
+    @Test fun sampleFoodAndAudioReviewsNeedNoCredentialsAndCannotConfirmPersonalEntries()=runBlocking<Unit> {
+        val graph=EntryPointAccessors.fromApplication(InstrumentationRegistry.getInstrumentation().targetContext,AiEntryPoint::class.java)
+        val before=graph.drafts().dao.all().map { it.id }.toSet()
+        compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Explore with sample data"))
+        compose.onNodeWithText("Explore with sample data").performClick()
+        try {
+            compose.onNodeWithText("You").performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Explore sample AI reviews"))
+            compose.onNodeWithText("Explore sample AI reviews").performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Try sample food review"))
+            compose.onNodeWithText("Try sample food review").performClick()
+            compose.onNodeWithText("SAMPLE DATA · LOCAL EXAMPLE").assertExists()
+            compose.onNodeWithText("Sample rice bowl").assertExists()
+            compose.onNodeWithText("Confirm journal entries").assertDoesNotExist()
+            compose.onNodeWithText("Close sample").performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Try sample activity review"))
+            compose.onNodeWithText("Try sample activity review").performClick()
+            compose.onNodeWithText("Steps not recorded").assertExists()
+            compose.onNodeWithText("Confirm journal entries").assertDoesNotExist()
+            compose.onNodeWithText("Close sample").performClick()
+            assertEquals(before,graph.drafts().dao.all().map { it.id }.toSet())
+        } finally {
+            if(compose.onAllNodesWithText("Close sample").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText("Close sample").performClick()
+            compose.onNodeWithText("Exit demo").performClick()
+        }
+    }
 }

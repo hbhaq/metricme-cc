@@ -19,7 +19,7 @@ class MemoryJobs:JobStore {
     override fun ready()=true
     @Synchronized override fun get(user:String,id:String)=rows[user to id]
     @Synchronized override fun claim(user:String,id:String,hash:String):Pair<Boolean,StoredJob> { val old=rows[user to id]; if(old!=null) { if(old.hash!=hash) throw ApiFailure("idempotency_conflict",409); return false to old }; val row=StoredJob(user,id,hash,"RUNNING",null,null,1,System.currentTimeMillis()); rows[user to id]=row; return true to row }
-    @Synchronized override fun finish(user:String,id:String,status:String,result:AiResult?,code:String?) { val row=rows[user to id]?:return; if(row.status=="RUNNING") rows[user to id]=row.copy(status=status,content=result?.let(WireJson::encodeToString),code=code) }
+    @Synchronized override fun finish(user:String,id:String,status:String,result:AiResult?,code:String?,retryAfterSeconds:Int?) { val row=rows[user to id]?:return; if(row.status=="RUNNING") rows[user to id]=row.copy(status=status,content=result?.let(WireJson::encodeToString),code=code,nextAttemptAt=retryAfterSeconds?.let { System.currentTimeMillis()+it*1000L }) }
     @Synchronized override fun cancel(user:String,id:String) { rows[user to id]?.let { rows[user to id]=it.copy(status="CANCELLED",content=null) } }
     @Synchronized override fun purge(user:String) { rows.keys.filter { it.first==user }.toList().forEach { cancel(it.first,it.second) } }
 }

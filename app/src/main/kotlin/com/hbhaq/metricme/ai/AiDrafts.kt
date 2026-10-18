@@ -52,12 +52,12 @@ class AiDraftRepository @Inject constructor(private val db:MetricMeDatabase,priv
         dao.draft(old.copy(revision=rev,operationKey=key,content=WireJson.encodeToString(value.copy(error=null,binding=binding,backend=backend)),stamp=old.stamp.copy(processing="QUEUED",updatedAt=now)))
         dao.job(ProcessingJobEntity(key,id,key,"QUEUED",0,null,CONSENT_VERSION,rev,now,now)); key
     }
-    suspend fun status(id:String,jobId:String,status:String,code:String?=null,attempt:Int?=null)=db.withTransaction {
+    suspend fun status(id:String,jobId:String,status:String,code:String?=null,attempt:Int?=null,nextAttemptAt:Long?=null)=db.withTransaction {
         val row=dao.draft(id)?:return@withTransaction; val job=dao.job(id)?:return@withTransaction
         if(job.id!=jobId || dao.tombstone(id)!=null || row.revision!=job.revision || row.stamp.processing=="CONFIRMED" || job.status=="CANCELLED") return@withTransaction
         val value=WireJson.decodeFromString<DraftContent>(row.content)
         dao.draft(row.copy(content=WireJson.encodeToString(value.copy(error=code)),stamp=row.stamp.copy(processing=status,updatedAt=clock.millis())))
-        dao.job(job.copy(status=status,attempt=attempt?:job.attempt,updatedAt=clock.millis()))
+        dao.job(job.copy(status=status,attempt=attempt?:job.attempt,updatedAt=clock.millis(),nextAttemptAt=nextAttemptAt))
     }
     suspend fun apply(id:String,jobId:String,result:AiResult):Boolean=db.withTransaction {
         EstimateRules.validate(result); require(!result.sample)
