@@ -47,6 +47,8 @@ Four database instrumentation tests and two Compose navigation/recreation/demo t
 
 Rendered visual inspection, TalkBack, 200% font scaling, physical-device behavior, real process-death restoration, release signing, and migration across a future schema version are pending. Rotation coverage is authored; do not equate it with a verified process-death test.
 
+GitHub source upload succeeded on `main`. The first CI run failed during SDK setup because the setup action's default package list included the removed `tools` package. The workflow now explicitly requests `platform-tools` and pins command-line tools 13114758, matching the locally working tool release. Emulator execution is still pending the corrected CI run.
+
 ## Incomplete / later stages
 
 - Stage 2: food/activity/steps/sleep/habits/medication forms, scheduled occurrences, local reminders and their tests.

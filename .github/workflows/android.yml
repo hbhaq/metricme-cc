@@ -14,6 +14,10 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - run: bash gradlew :domain:test :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug --stacktrace
@@ -34,6 +38,10 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - name: Enable KVM
