@@ -53,25 +53,25 @@ class LoggingRepository @Inject constructor(private val db: MetricMeDatabase, pr
             is FoodLog -> {
                 val old = dao.food(id); require(input.id == null || old != null) { "This entry was deleted. Close and reopen the form." }
                 val t = input.time
-                dao.food(FoodEntity(id, "local", t.instant.toEpochMilli(), t.zoneId, t.offsetSeconds, t.date.toString(), input.meal, input.portion, old?.operationKey ?: key, Stamp(createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
+                dao.food(FoodEntity(id, "local", t.instant.toEpochMilli(), t.zoneId, t.offsetSeconds, t.date.toString(), input.meal, input.portion, old?.operationKey ?: key, Stamp(source = old?.stamp?.source ?: "MANUAL", confidence = old?.stamp?.confidence, createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
                 dao.deleteComponents(id)
                 dao.components(listOf(FoodComponentEntity(UUID.randomUUID().toString(), id, input.name.trim(), input.quantity, input.unit.trim(), input.calories, input.protein, input.carbs, input.fat)))
             }
             is ActivityLog -> {
                 val old = dao.activity(id); require(input.id == null || old != null) { "This entry was deleted. Close and reopen the form." }
                 val t = input.time
-                dao.activity(ActivityEntity(id, "local", t.instant.toEpochMilli(), t.zoneId, t.offsetSeconds, t.date.toString(), input.name.trim(), input.minutes?.let { (it * 60).toLong() }, input.steps, input.intensity, input.notes.trim(), old?.operationKey ?: key, Stamp(createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
+                dao.activity(ActivityEntity(id, "local", t.instant.toEpochMilli(), t.zoneId, t.offsetSeconds, t.date.toString(), input.name.trim(), input.minutes?.let { (it * 60).toLong() }, input.steps, input.intensity, input.notes.trim(), old?.operationKey ?: key, Stamp(source = old?.stamp?.source ?: "MANUAL", confidence = old?.stamp?.confidence, createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
                 dao.deleteExercises(id); dao.exercises(input.exercises.map { ExerciseEntity(UUID.randomUUID().toString(), id, it.name.trim(), it.sets, it.reps, it.loadKg) })
             }
             is StepsLog -> {
                 val old = dao.step(id); require(input.id == null || old != null) { "This entry was deleted. Close and reopen the form." }
                 val t = input.time
-                dao.step(StepEntity(id, "local", t.instant.toEpochMilli(), t.zoneId, t.offsetSeconds, t.date.toString(), input.steps, true, old?.operationKey ?: key, Stamp(createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
+                dao.step(StepEntity(id, "local", t.instant.toEpochMilli(), t.zoneId, t.offsetSeconds, t.date.toString(), input.steps, true, old?.operationKey ?: key, Stamp(source = old?.stamp?.source ?: "MANUAL", confidence = old?.stamp?.confidence, createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
             }
             is SleepLog -> {
                 val old = dao.sleep(id); require(input.id == null || old != null) { "This entry was deleted. Close and reopen the form." }
                 require(input.overlapConfirmed || dao.overlaps(id, input.bed.instant.toEpochMilli(), input.wake.instant.toEpochMilli()).isEmpty()) { "This overlaps another sleep session. Check the overlap confirmation before saving; daily duration counts overlapping minutes once." }
-                dao.sleep(SleepEntity(id, "local", input.bed.instant.toEpochMilli(), input.wake.instant.toEpochMilli(), input.bed.zoneId, input.wake.zoneId, input.wake.date.toString(), input.quality, old?.operationKey ?: key, Stamp(createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
+                dao.sleep(SleepEntity(id, "local", input.bed.instant.toEpochMilli(), input.wake.instant.toEpochMilli(), input.bed.zoneId, input.wake.zoneId, input.wake.date.toString(), input.quality, old?.operationKey ?: key, Stamp(source = old?.stamp?.source ?: "MANUAL", confidence = old?.stamp?.confidence, createdAt = old?.stamp?.createdAt ?: now, updatedAt = now)))
             }
         }
         id

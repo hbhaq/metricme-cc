@@ -22,9 +22,9 @@ object MediaValidation {
         val png = bytes.size>=8 && bytes.take(8)==listOf(137,80,78,71,13,10,26,10).map(Int::toByte)
         if (!(mime=="image/jpeg" && jpeg || mime=="image/png" && png)) throw ApiFailure("invalid_media",400)
         try {
-            ImageIO.createImageInputStream(ByteArrayInputStream(bytes)).use { stream ->
+            javax.imageio.stream.MemoryCacheImageInputStream(ByteArrayInputStream(bytes)).use { stream ->
                 val readers=ImageIO.getImageReaders(stream); if(!readers.hasNext()) throw ApiFailure("invalid_media",400)
-                val reader=readers.next(); try { reader.input=stream; val w=reader.getWidth(0); val h=reader.getHeight(0); if(w<16 || h<16 || w.toLong()*h>16000000) throw ApiFailure("invalid_dimensions",400); requireNotNull(reader.read(0)) } finally { reader.dispose() }
+                val reader=readers.next(); try { reader.input=stream; val w=reader.getWidth(0); val h=reader.getHeight(0); if(w<16 || h<16 || w.toLong()*h>4194304) throw ApiFailure("invalid_dimensions",400); requireNotNull(reader.read(0)) } finally { reader.dispose() }
             }
         } catch(e: ApiFailure) { throw e } catch(_: Exception) { throw ApiFailure("invalid_media",400) }
     }

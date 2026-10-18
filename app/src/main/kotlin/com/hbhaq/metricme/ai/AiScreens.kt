@@ -38,7 +38,7 @@ import kotlinx.coroutines.withContext
     val sessionRevision by model.sessions.changes.collectAsStateWithLifecycle(); val authMessage by model.sessions.message.collectAsStateWithLifecycle()
     val context=LocalContext.current; val owner=LocalLifecycleOwner.current
     var sample by rememberSaveable { mutableStateOf("") }
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let(model::importPhoto) }
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let { uri -> model.importPhoto(uri) } }
     val camera=rememberLauncherForActivityResult(ActivityResultContracts.TakePicture(),model::cameraResult)
     val microphone=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if(granted) model.startAudio() else model.error.value="Microphone permission was denied. Manual activity logging remains available." }
     DisposableEffect(owner,model) {
@@ -116,11 +116,13 @@ private fun statusLabel(status:String)=when(status) {
     }
 }
 @Composable private fun DraftReview(model:AiViewModel,row:AiDraft,manual:(String)->Unit) {
+    val sessionRevision by model.sessions.changes.collectAsStateWithLifecycle()
+    val signedIn=remember(sessionRevision) { model.sessions.signedIn() }
     val fields by model.fields.collectAsStateWithLifecycle(); val dirty by model.dirty.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle(); val error by model.error.collectAsStateWithLifecycle()
     var consent by rememberSaveable(row.row.id) { mutableStateOf(false) }; var deleting by rememberSaveable(row.row.id) { mutableStateOf(false) }
     val value=row.value; val result=value.result
-    val locked=row.row.stamp.processing in listOf("QUEUED","RUNNING","RETRYABLE")
+    val locked=row.row.stamp.processing in listOf("QUEUED","RUNNING","RETRYABLE","AUTH_REQUIRED")
     LaunchedEffect(row.row.content) { model.sync(row) }
     @Composable fun input(key:String,label:String,old:String?,hint:String?=null,multiline:Boolean=false) {
         OutlinedTextField(fields[key]?:old.orEmpty(),{ model.change(key,it) },label={ Text(label) },supportingText=hint?.let { { Text(it) } },singleLine=!multiline,enabled=!busy&&!locked,modifier=Modifier.fillMaxWidth())
@@ -167,8 +169,8 @@ private fun statusLabel(status:String)=when(status) {
                     input("zone","Event timezone",value.zone); input("offset","UTC offset for repeated clock time",value.offset,"Normally blank; repeated times need an explicit offset")
                     if(dirty&&!locked) OutlinedButton(onClick={ model.save(row.row.id) },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Save review changes") }
                     if(locked) Button(onClick={ model.cancel(row.row.id,false) },enabled=!busy) { Text("Cancel upload · keep draft") }
-                    else if(result==null) Button(onClick={ consent=true },enabled=!busy&&model.sessions.signedIn(),modifier=Modifier.fillMaxWidth()) { Text("Review upload consent") }
-                    if(result==null&&!model.sessions.signedIn()) Text("Close this draft and sign in from AI connection to upload. It stays available offline.")
+                    else if(result==null) Button(onClick={ consent=true },enabled=!busy&&signedIn,modifier=Modifier.fillMaxWidth()) { Text("Review upload consent") }
+                    if(result==null&&!signedIn) Text("Close this draft and sign in from AI connection to upload. It stays available offline.")
                     if(result!=null) Button(onClick={ model.confirm(row.row.id) },enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)) { Text("Confirm journal entries") }
                     OutlinedButton(onClick={ model.close(); manual(row.row.kind) },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Use manual entry") }
                     TextButton(onClick={ deleting=true },enabled=!busy) { Text("Delete draft and private media",color=MaterialTheme.colorScheme.error) }
@@ -182,7 +184,6 @@ private fun statusLabel(status:String)=when(status) {
 @Composable private fun PhotoPreview(path:String) {
     val bitmap by produceState<android.graphics.Bitmap?>(null,path) { value=withContext(Dispatchers.IO) { BitmapFactory.decodeFile(path,BitmapFactory.Options().apply { inSampleSize=2 }) } }
     bitmap?.let { Image(it.asImageBitmap(),"Private photo preview",Modifier.fillMaxWidth().heightIn(max=260.dp)) }?:Text("Photo preview unavailable. Keep the draft or choose another image.")
-    DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
 }
 @Composable private fun SampleReview(result:AiResult,close:()->Unit) {
     Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false)) { Surface(Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background) { Column(Modifier.statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {

@@ -23,7 +23,7 @@ class AiDraftDatabaseTest {
         val job=repo.queue(id,"account","https://api.example.test/"); assertTrue(repo.apply(id,job,result)); return id
     }
     @Test fun draftsNeverCountAndConfirmedBatchIsAtomicAndIdempotent()=runBlocking {
-        val food=DemoEstimates.food().let { it.copy(sample=false,food=it.food!!.copy(items=it.food.items+FoodItem("Second food",1.0,"serving",null,null,null,null))) }
+        val food=DemoEstimates.food().let { val f=requireNotNull(it.food); it.copy(sample=false,food=f.copy(items=f.items+FoodItem("Second food",1.0,"serving",null,null,null,null))) }
         val id=ready(result=food); assertTrue(db.loggingDao().foods().first().isEmpty())
         val row=repo.dao.draft(id)!!; repeat(2) { repo.confirm(id,row.revision) }
         val entries=db.loggingDao().foods().first(); assertEquals(2,entries.size); assertTrue(entries.all { it.entry.stamp.source=="AI_ESTIMATED" && it.entry.stamp.confirmation=="CONFIRMED" }); assertEquals(1,entries.count { it.components.single().calories==null })

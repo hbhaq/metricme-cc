@@ -37,7 +37,7 @@ class AiDraftRepository @Inject constructor(private val db:MetricMeDatabase,priv
     suspend fun edit(id:String,expected:Int,value:DraftContent)=db.withTransaction {
         val old=dao.draft(id)?:return@withTransaction
         require(old.revision==expected) { "The draft changed. Reopen it to keep the latest edits." }
-        require(old.stamp.processing !in listOf("QUEUED","RUNNING","RETRYABLE")) { "Cancel the pending upload before editing." }
+        require(old.stamp.processing !in listOf("QUEUED","RUNNING","RETRYABLE","AUTH_REQUIRED")) { "Cancel the pending upload before editing." }
         require(old.stamp.processing!="CONFIRMED"); require(value.context.length<=2000)
         value.result?.let(EstimateRules::validate)
         dao.draft(old.copy(revision=old.revision+1,content=WireJson.encodeToString(value),stamp=old.stamp.copy(updatedAt=clock.millis())))
@@ -91,6 +91,7 @@ class AiDraftRepository @Inject constructor(private val db:MetricMeDatabase,priv
             require(value.meal in listOf("Breakfast","Lunch","Dinner","Snack","Other"))
             // Confirm the reviewed batch atomically; each recognized food stays independently editable.
             food.items.forEachIndexed { index,item ->
+                LogRules.validate(FoodLog(null,t,item.name,value.meal,item.quantity,item.unit,food.portionConsumed,item.calories,item.protein,item.carbs,item.fat),clock.instant())
                 val itemId=UUID.nameUUIDFromBytes("$id:item:$index".toByteArray()).toString()
                 val key=UUID.nameUUIDFromBytes("${row.operationKey}:$index".toByteArray()).toString()
                 db.loggingDao().food(FoodEntity(itemId,"local",t.instant.toEpochMilli(),t.zoneId,t.offsetSeconds,t.date.toString(),value.meal,food.portionConsumed,key,stamp))
@@ -98,7 +99,10 @@ class AiDraftRepository @Inject constructor(private val db:MetricMeDatabase,priv
             }
         } else {
             val a=requireNotNull(result.activity); require(!a.needsClarification && !a.type.isNullOrBlank()) { "Resolve the activity name or clarification first." }
-            db.loggingDao().activity(ActivityEntity(id,"local",t.instant.toEpochMilli(),t.zoneId,t.offsetSeconds,t.date.toString(),a.type,a.durationMinutes?.let { (it*60).toLong() },a.steps,a.intensity,"Confirmed AI draft. ${a.assumptions.joinToString(" ")}",row.operationKey,stamp))
+            val activityType=requireNotNull(a.type)
+            val notes="Confirmed AI draft. ${a.assumptions.joinToString(" ")}".take(2000)
+            LogRules.validate(ActivityLog(null,t,activityType,a.durationMinutes,a.steps,a.intensity,notes,a.exercises.map { Exercise(it.name,it.sets,it.reps,it.loadKg) }),clock.instant())
+            db.loggingDao().activity(ActivityEntity(id,"local",t.instant.toEpochMilli(),t.zoneId,t.offsetSeconds,t.date.toString(),activityType,a.durationMinutes?.let { (it*60).toLong() },a.steps,a.intensity,notes,row.operationKey,stamp))
             db.loggingDao().exercises(a.exercises.map { ExerciseEntity(UUID.randomUUID().toString(),id,it.name,it.sets,it.reps,it.loadKg) })
         }
         dao.draft(row.copy(stamp=row.stamp.copy(confirmation="CONFIRMED",processing="CONFIRMED",updatedAt=clock.millis()))); id

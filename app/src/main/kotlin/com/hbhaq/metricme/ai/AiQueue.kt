@@ -91,9 +91,9 @@ class AiUploadWorker(context:Context,params:WorkerParameters):CoroutineWorker(co
             val result=response.body()
             when {
                 response.code()==401 || response.code()==403 -> { repo.status(id,jobId,"AUTH_REQUIRED","Sign in again to continue."); return Result.success() }
-                response.code()==429 || response.code() in 500..599 -> { repo.status(id,jobId,"RETRYABLE","Temporary server issue. Retrying with the same operation key."); return Result.retry() }
+                response.code() in listOf(408,429) || response.code() in 500..599 -> { repo.status(id,jobId,"RETRYABLE","Temporary server issue. Retrying with the same operation key."); return Result.retry() }
                 !response.isSuccessful || result==null -> { repo.status(id,jobId,"FAILED","Request rejected. Check the media, connection configuration and consent."); return Result.failure() }
-                result.status=="READY" && result.result!=null -> { if(!repo.apply(id,jobId,result.result)) graph.queue().maintain(); return Result.success() }
+                result.status=="READY" && result.result!=null -> { if(!repo.apply(id,jobId,requireNotNull(result.result))) graph.queue().maintain(); return Result.success() }
                 result.status in listOf("RUNNING","RETRYABLE") -> { repo.status(id,jobId,"RETRYABLE","Processing or temporarily unavailable. Retrying safely."); return Result.retry() }
                 else -> { repo.status(id,jobId,"FAILED",when(result.code) { "refused" -> "The model declined this request. Use manual logging."; "upstream_uncertain" -> "The upstream outcome is uncertain. Automatic retries stopped. Review before making a new request."; else -> "No usable estimate was returned. Try clearer media or manual entry." }); return Result.failure() }
             }

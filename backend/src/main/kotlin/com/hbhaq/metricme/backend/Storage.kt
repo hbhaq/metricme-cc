@@ -20,6 +20,7 @@ interface JobStore : AutoCloseable {
     fun finish(user: String, id: String, status: String, result: AiResult? = null, code: String? = null)
     fun cancel(user: String, id: String)
     fun purge(user: String)
+    fun cleanup() {}
     override fun close() {}
 }
 class PostgresJobs(url: String) : JobStore {
@@ -27,9 +28,9 @@ class PostgresJobs(url: String) : JobStore {
         if (url.startsWith("jdbc:")) jdbcUrl = url else {
             val uri = URI(url); require(uri.scheme in listOf("postgres", "postgresql"))
             jdbcUrl = "jdbc:postgresql://${uri.host}:${if (uri.port < 0) 5432 else uri.port}${uri.path}${uri.rawQuery?.let { "?$it" }.orEmpty()}"
-            val credentials = uri.userInfo.orEmpty().split(':', limit = 2)
-            username = java.net.URLDecoder.decode(credentials[0], Charsets.UTF_8)
-            password = java.net.URLDecoder.decode(credentials.getOrElse(1) { "" }, Charsets.UTF_8)
+            val credentials = uri.rawUserInfo.orEmpty().split(':', limit = 2)
+            username = java.net.URLDecoder.decode(credentials[0].replace("+","%2B"), Charsets.UTF_8)
+            password = java.net.URLDecoder.decode(credentials.getOrElse(1) { "" }.replace("+","%2B"), Charsets.UTF_8)
         }
         maximumPoolSize = 4; connectionTimeout = 10000; initializationFailTimeout = 10000
     })
@@ -63,4 +64,5 @@ class PostgresJobs(url: String) : JobStore {
     override fun cancel(user: String,id: String) { pool.connection.use { c -> c.prepareStatement("UPDATE ai_jobs SET status='CANCELLED',content=NULL,code=NULL,updated_at=? WHERE owner_hash=? AND id=?").use { it.setLong(1,System.currentTimeMillis()); it.setString(2,user); it.setString(3,id); it.executeUpdate() } } }
     override fun purge(user: String) { pool.connection.use { c -> c.prepareStatement("UPDATE ai_jobs SET status='CANCELLED',content=NULL,code=NULL,updated_at=? WHERE owner_hash=?").use { it.setLong(1,System.currentTimeMillis()); it.setString(2,user); it.executeUpdate() } } }
     override fun close() = pool.close()
+    override fun cleanup() { pool.connection.use { c -> c.prepareStatement("DELETE FROM ai_jobs WHERE updated_at < ?").use { it.setLong(1,System.currentTimeMillis()-7*86400000L); it.executeUpdate() } } }
 }

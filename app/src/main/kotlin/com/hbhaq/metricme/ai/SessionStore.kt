@@ -40,7 +40,7 @@ data class ConnectionSettings(val backend:String="",val issuer:String="",val cli
         listOf(value.backend,value.issuer).forEach { val uri=java.net.URI(it); require(uri.scheme=="https" && !uri.host.isNullOrBlank() && uri.userInfo==null && uri.query==null && uri.fragment==null) { "Backend and issuer must be HTTPS URLs without credentials, query or fragment." } }
         require(value.clientId.isNotBlank() && value.clientId.length<=300 && value.audience.isNotBlank() && value.audience.length<=500)
         if(value!=settings()) signOut()
-        prefs.edit().putString("backend",value.backend.trimEnd('/')+"/").putString("issuer",value.issuer.trimEnd('/')).putString("client",value.clientId).putString("audience",value.audience).apply(); changes.value++
+        prefs.edit().putString("backend",value.backend.trimEnd('/')+"/").putString("issuer",value.issuer).putString("client",value.clientId).putString("audience",value.audience).apply(); changes.value++
     }
     private fun key():SecretKey {
         val store=KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -48,7 +48,7 @@ data class ConnectionSettings(val backend:String="",val issuer:String="",val cli
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore").apply { init(KeyGenParameterSpec.Builder("metricme-session",KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build()) }.generateKey()
     }
     private fun read():AuthState?=runCatching {
-        val encoded=prefs.getString("session",null)?:return null
+        val encoded=prefs.getString("session",null)?:return@runCatching null
         val bytes=Base64.decode(encoded,Base64.NO_WRAP); require(bytes.size>12)
         val cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE,key(),GCMParameterSpec(128,bytes.copyOfRange(0,12)))
         AuthState.jsonDeserialize(String(cipher.doFinal(bytes.copyOfRange(12,bytes.size)),Charsets.UTF_8))
@@ -56,23 +56,20 @@ data class ConnectionSettings(val backend:String="",val issuer:String="",val cli
     fun store(state:AuthState) {
         val cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE,key())
         val bytes=cipher.iv+cipher.doFinal(state.jsonSerializeString().toByteArray())
-        prefs.edit().putString("session",Base64.encodeToString(bytes,Base64.NO_WRAP)).apply(); message.value=null; changes.value++
+        val update=prefs.edit().putString("session",Base64.encodeToString(bytes,Base64.NO_WRAP))
+        state.idToken?.let { token -> runCatching { val payload=JSONObject(String(Base64.decode(token.split('.')[1],Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))); val raw="${settings().issuer}|${payload.getString("sub")}|${settings().clientId}"; java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray()).joinToString("") { "%02x".format(it) } }.getOrNull()?.let { update.putString("sessionBinding",it) } }
+        update.apply(); message.value=null; changes.value++
     }
-    fun signOut() { prefs.edit().remove("session").apply(); changes.value++; message.value="Signed out on this device. Pending uploads wait for sign-in. Provider browser sign-in may remain active." }
+    fun signOut() { prefs.edit().remove("session").remove("sessionBinding").apply(); changes.value++; message.value="Signed out on this device. Pending uploads wait for sign-in. Provider browser sign-in may remain active." }
     fun signedIn()=read()?.isAuthorized==true
-    fun binding():String?=runCatching {
-        val token=read()?.idToken?:return null
-        val payload=JSONObject(String(Base64.decode(token.split('.')[1],Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)))
-        // This is only a local account-change guard. The server validates the access token.
-        val raw="${settings().issuer}|${payload.getString("sub")}|${settings().clientId}"
-        java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray()).joinToString("") { "%02x".format(it) }
-    }.getOrNull()
+    // A local account-change guard only; the server validates the access token independently.
+    fun binding():String?=if(signedIn()) prefs.getString("sessionBinding",null) else null
     suspend fun accessToken(expected:String):String=mutex.withLock {
         check(binding()==expected) { "Sign in with the account that queued this draft." }
         val state=read()?:error("Sign in to continue.")
         val service=AuthorizationService(context)
         try { suspendCancellableCoroutine { continuation -> state.performActionWithFreshTokens(service) { access,_,exception ->
-            if(continuation.isActive) { if(exception!=null || access.isNullOrBlank()) continuation.resumeWithException(IllegalStateException("Sign in again to resume uploads.")) else { store(state); continuation.resume(access) } }
+            if(continuation.isActive) { if(binding()!=expected || exception!=null || access.isNullOrBlank()) continuation.resumeWithException(IllegalStateException("Sign in again to resume uploads.")) else { store(state); continuation.resume(access) } }
         } } } finally { service.dispose() }
     }
     fun signIn() {
@@ -96,5 +93,5 @@ data class ConnectionSettings(val backend:String="",val issuer:String="",val cli
 }
 @AndroidEntryPoint class AuthCompleteActivity:ComponentActivity() {
     @Inject lateinit var sessions:SessionStore
-    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); sessions.complete(intent) { finish() } }
+    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); if(savedInstanceState!=null) { sessions.message.value="Sign-in was interrupted. Please try again."; finish(); return }; sessions.complete(intent) { finish() } }
 }

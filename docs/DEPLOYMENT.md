@@ -1,0 +1,58 @@
+# MetricMe API deployment
+
+Railway hosts the Ktor API. The native Android UI is installed from an APK; it is not a website hosted on Railway.
+
+## Current deployment status
+
+The user authorized GitHub upload and Railway deployment. Creating a private `MetricMe` Railway project on 2026-10-18 was rejected by Railway with: **“Free plan resource provision limit exceeded. Please upgrade to provision more resources!”** No MetricMe service, database, public URL or paid plan change was created. Existing GradeLens and LectureDubber resources were not modified. Deployment remains blocked until the account has capacity; this is separate from the code/build verification.
+
+## Railway configuration
+
+1. Create a private project with a production environment. Add the Railway PostgreSQL template, retaining its generated credentials and persistent volume.
+2. Deploy `hbhaq/metricme-cc`, branch `main`, root directory `/`, using the committed `Dockerfile` and `railway.json`.
+3. Set `DATABASE_URL` to `${{Postgres.DATABASE_URL}}` using Railway variable references. Never paste database credentials into Android or source control. The service uses four pooled connections and additive PostgreSQL DDL for its initial receipt schema.
+4. Use `/health/ready` as the deployment health check. Generate a Railway HTTPS domain pointing to the service's `PORT` (default 8080). `/health/live` reports process liveness; readiness verifies PostgreSQL. Both explicitly report whether AI and authentication are configured.
+5. Keep real AI locked until the following variables are set in Railway: `OPENAI_API_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL`. Model defaults are `gpt-4.1-mini` and `gpt-4o-mini-transcribe`; they can be overridden server-side. `DEV_AUTH_ENABLED=true` prevents startup; no shared static development bearer is supported.
+6. Verify unauthenticated health-data routes return 401; invalid issuer/audience/signature/expiry tokens also fail. Then test with your own provider and account. Live paid API calls are opt-in and were not made during implementation.
+
+The Docker image uses a JDK build stage and a non-root JRE runtime with a 256 MiB Java heap. Two uploads/processes are allowed at a time. The server accepts bounded JSON envelopes containing base64 media, with 10 MiB decoded limits, a 20-second upload read timeout, and validated file signatures. Images are JPEG/PNG up to 4,194,304 pixels; the app transcodes to at most 2048 pixels on either side. Audio is canonical mono 16-bit PCM WAV at 16 kHz, up to 120 seconds.
+
+## Sign-in provider setup
+
+OIDC (OpenID Connect) delegates sign-in to an identity provider. Use a native/public Android client with authorization-code + PKCE, no client secret, and redirect URI `com.hbhaq.metricme:/oauth2redirect`. Register a dedicated API audience and RS256 access tokens. Configure issuer and JWKS URLs exactly as the provider publishes them; issuer trailing slashes can be significant. Tokens must include `sub`, `exp`, the expected issuer and API audience. The backend does not treat an ID token or a public client ID as user authentication.
+
+In Android: **You → Photo, audio & private drafts → Set up AI connection**. Enter the public backend URL, issuer, Android client ID and API audience, then sign in with the system browser. The `audience` authorization parameter follows providers such as Auth0; use a compatible provider configuration. Provider-specific scopes/claims and callback behavior require a real account test. Google sign-in by itself is not a drop-in replacement for a dedicated API audience.
+
+Session state is AES-GCM encrypted with an Android Keystore key. This protects credentials, not the Room database. Sign-out clears local credentials and suspends pending uploads; the provider's browser session can remain active. Account-bound jobs cannot switch to a newly signed-in subject. An interrupted token exchange requires a fresh sign-in rather than replaying the authorization code.
+
+## Local server and tests
+
+Set environment variables from `.env.example` in your shell; Gradle does not automatically load that file. Start a local PostgreSQL database, then:
+
+```sh
+./gradlew -PbackendOnly :contracts:test :backend:test :backend:run
+```
+
+The actual PostgreSQL integration test uses `TEST_DATABASE_URL`; without it that one local test is explicitly skipped. CI supplies a real PostgreSQL 17 service and runs it. The remaining tests mock upstream OpenAI and token/JWK material. CI also builds the actual Docker image and checks database readiness, unauthenticated rejection and the non-root runtime using `scripts/backend-smoke.sh`.
+
+Client HTTPS is mandatory. For local Android network testing, use a trusted HTTPS tunnel with your test identity provider; cleartext traffic and certificate bypasses are not enabled in release or debug builds.
+
+## API and idempotency
+
+`POST /v1/food-estimates`, `POST /v1/activity-transcriptions`, `GET/DELETE /v1/jobs/{id}`, and `DELETE /v1/account/data` require bearer authentication. POST routes require a canonical UUID `Idempotency-Key`. Bodies use the serializable contracts module. Errors contain safe codes and retryability, never transcripts, media, model output, credentials or database errors.
+
+Receipts are keyed by SHA-256 of validated issuer+subject and operation UUID, with a request hash and PostgreSQL transaction lock. Conflicting reuse returns 409; completed retries return the same result. Retries are capped at five, per-subject new operations at ten/hour, and per-instance concurrency at two. A 429 before an upstream success can retry. Transport uncertainty, upstream 5xx, process interruption or a stale five-minute processing lease is not silently rerun upstream: the client shows an uncertain outcome and requires deliberate review/new consent. An upstream call cannot be made exactly once across every crash boundary; this limitation is explicit.
+
+Cancellation tombstones the local draft before cancelling work. Server cancellation discards the result and prevents a late in-flight result from overwriting it. The client keeps account-bound purge work until acknowledged. PostgreSQL result/receipt retention is seven days, with hourly cleanup and cleanup on new operations. The server holds raw media in bounded request memory only, not files or object storage. Application-level request/body logging is absent. Configure provider and platform log retention independently.
+
+OpenAI requests use `store:false`; this is not a promise of zero OpenAI retention. Review the provider's data controls before using sensitive real data.
+
+## Rollout checklist
+
+- [ ] Railway capacity available and MetricMe/PostgreSQL provisioned.
+- [ ] Image build and health checks pass in Railway; public HTTPS domain confirmed.
+- [ ] OIDC native client, exact issuer/audience/JWKS and Android callback verified.
+- [ ] OpenAI key stored only in Railway and account access to configured models verified.
+- [ ] One explicit, opted-in real photo/audio request tested; costs and retention reviewed.
+- [ ] Physical-device camera/audio interruption, OAuth return, background queue, revoked permissions, offline cancellation and process recovery checked.
+- [ ] Stage 5 privacy/deletion, accessibility and release/signing review completed.

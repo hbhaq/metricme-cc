@@ -61,6 +61,9 @@ fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,
     }
     install(Authentication) { bearer("oidc") { authenticate { credential -> verify(credential.token)?.let(::SubjectPrincipal) } } }
     val slots=Semaphore(2)
+    val maintenance=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+    maintenance.launch { while(isActive) { try { store?.cleanup() } catch(e:CancellationException) { throw e } catch(_:Exception) { /* No payload/SQL exception is logged. Readiness still exposes DB health. */ }; delay(3600000) } }
+    monitor.subscribe(ApplicationStopped) { maintenance.cancel(); store?.close() }
     routing {
         get("/") { call.respondText("MetricMe API · native Android companion. Manual logging remains on your device. /health/live",ContentType.Text.Plain) }
         get("/health/live") { call.respond(ServiceInfo("live",gateway!=null,config.authConfigured)) }
@@ -71,14 +74,14 @@ fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,
                 val jobs=store?:throw ApiFailure("not_configured",503); val ai=gateway?:throw ApiFailure("not_configured",503)
                 val id=call.request.headers["Idempotency-Key"]?:throw ApiFailure("idempotency_required",400)
                 try { require(UUID.fromString(id).toString()==id) } catch(_: Exception) { throw ApiFailure("invalid_idempotency_key",400) }
+                if(!slots.tryAcquire()) throw ApiFailure("busy",429,true)
+                try {
                 val limit=15L*1024*1024
                 if((call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull()?:0)>limit) throw ApiFailure("upload_too_large",413)
-                val bytes=call.receiveChannel().readRemaining(limit+1).readByteArray()
+                val bytes=try { withTimeout(20000) { call.receiveChannel().readRemaining(limit+1).readByteArray() } } catch(_:TimeoutCancellationException) { throw ApiFailure("upload_timeout",408,true) }
                 if(bytes.size>limit) throw ApiFailure("upload_too_large",413)
                 val request=try { WireJson.decodeFromString<EstimateRequest>(String(bytes,Charsets.UTF_8)) } catch(_: Exception) { throw ApiFailure("invalid_request",400) }
                 val media=MediaValidation.decode(request,kind)
-                if(!slots.tryAcquire()) throw ApiFailure("busy",429,true)
-                try {
                     val (owned,job)=withContext(Dispatchers.IO) { jobs.claim(user,id,sha256((kind+WireJson.encodeToString(request)).toByteArray())) }
                     if(!owned) { call.respond(if(job.status=="RUNNING") HttpStatusCode.Accepted else HttpStatusCode.OK,job.response()); return@post }
                     try { val result=ai.estimate(kind,request,media); EstimateRules.validate(result); withContext(Dispatchers.IO) { jobs.finish(user,id,"READY",result) } }
