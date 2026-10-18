@@ -47,7 +47,7 @@ private val destinations = listOf(
 )
 
 @Composable
-fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel) {
+fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbhaq.metricme.ai.AiViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val form by model.formKind.collectAsStateWithLifecycle()
     val logs by logging.state.collectAsStateWithLifecycle()
@@ -59,7 +59,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel) {
     val route = entry?.destination?.route ?: "today"
     Scaffold(
         floatingActionButton = {
-            if (!state.demo && !state.loading) FloatingActionButton(onClick = { picker = true }) {
+            if (!state.demo && !state.loading && route != "assist") FloatingActionButton(onClick = { picker = true }) {
                 Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Outlined.Add, null)
                     Text("Log", style = MaterialTheme.typography.labelLarge)
@@ -98,16 +98,17 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel) {
                     composable("today") { if (state.demo) TodayScreen(state, model.today(), model::openProfile, { nav.navigate("you") }, { model.setDemo(true) }) else ManualTodayScreen(state, model, logs, logging, { nav.navigate("routines") }) }
                     composable("journal") { if (state.demo) JournalScreen(state, { nav.navigate("measurements") }) else ManualJournalScreen(logs, logging, { nav.navigate("measurements") }) }
                     composable("insights") { InsightsScreen() }
-                    composable("you") { YouScreen(state, model, { nav.navigate("measurements") }, { nav.navigate("routines") }) }
+                    composable("you") { YouScreen(state, model, { nav.navigate("measurements") }, { nav.navigate("routines") }, { nav.navigate("assist") }) }
                     composable("measurements") { MeasurementScreen(state, model) { nav.popBackStack() } }
                     composable("routines") { RoutinesScreen(logs, logging, state.demo) { nav.popBackStack() } }
+                    composable("assist") { com.hbhaq.metricme.ai.AiScreen(ai, state.demo, { nav.popBackStack() }) { kind -> nav.popBackStack(); logging.openLog(LogKind.valueOf(kind)) } }
                 }
             }
         }
     }
     if (form.isNotEmpty()) FormDialog(model, state, form)
     if (logEditor.isNotEmpty() && !state.demo) LoggingEditor(logging, logs, logEditor)
-    if (picker && !state.demo) LogPicker(onDismiss = { picker = false }, onLog = { picker = false; logging.openLog(it) }, onRoutine = { picker = false; logging.openRoutine(it) })
+    if (picker && !state.demo) LogPicker(onDismiss = { picker = false }, onLog = { picker = false; logging.openLog(it) }, onRoutine = { picker = false; logging.openRoutine(it) }, onAi = { picker = false; nav.navigate("assist") })
 }
 
 @Composable internal fun PageTitle(eyebrow: String, title: String, subtitle: String? = null) {
@@ -223,12 +224,13 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel) {
     }
 }
 
-@Composable private fun YouScreen(state: AppState, model: MetricMeViewModel, history: () -> Unit, routines: () -> Unit) {
+@Composable private fun YouScreen(state: AppState, model: MetricMeViewModel, history: () -> Unit, routines: () -> Unit, assist: () -> Unit) {
     val locale = LocalLocale.current.platformLocale
     val target = HealthRules.historicalTarget(state.targets, model.today())
-    LazyColumn(contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         item { PageTitle("Your foundation", "A routine that fits you.", "Your information stays on this device. Share only what feels right.") }
         item { OutlinedButton(onClick = routines, enabled = !state.demo, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Checklist, null); Spacer(Modifier.width(8.dp)); Text("Habits, medications & reminders") } }
+        item { FilledTonalButton(onClick = assist, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text(if (state.demo) "Explore sample AI reviews" else "Photo, audio & private drafts") } }
         item { Panel {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PersonOutline, null, Modifier.size(28.dp)) }
@@ -273,7 +275,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel) {
 @Composable private fun PrivacyNote() {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(Icons.Outlined.Lock, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Local storage uses Android’s app sandbox and device encryption. The database is not separately encrypted. No health data leaves this build.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Local storage uses Android’s app sandbox and device encryption. The database is not separately encrypted. AI uploads require sign-in and explicit consent; manual logging stays offline.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

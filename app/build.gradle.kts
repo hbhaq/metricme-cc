@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.room)
@@ -12,8 +13,9 @@ android {
         applicationId = "com.hbhaq.metricme"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.hbhaq.metricme"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }
@@ -28,6 +30,10 @@ kotlin { jvmToolchain(17) }
 room { schemaDirectory("$projectDir/schemas") }
 dependencies {
     implementation(project(":domain"))
+    implementation(project(":contracts"))
+    implementation(libs.retrofit.core)
+    implementation(libs.retrofit.json)
+    implementation(libs.appauth)
     // Keep the app-loaded runtime aligned with Room's instrumented schema reader.
     implementation(platform(libs.serialization.bom))
     implementation(platform(libs.compose.bom))

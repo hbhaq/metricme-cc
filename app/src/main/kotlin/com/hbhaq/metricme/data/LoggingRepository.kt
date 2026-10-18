@@ -6,7 +6,7 @@ import java.util.UUID
 import javax.inject.Inject
 import kotlinx.coroutines.flow.combine
 
-data class JournalItem(val id: String, val kind: LogKind, val title: String, val instant: Instant, val zone: String, val date: LocalDate, val detail: String, val input: ManualLog, val order: Long = 0)
+data class JournalItem(val id: String, val kind: LogKind, val title: String, val instant: Instant, val zone: String, val date: LocalDate, val detail: String, val input: ManualLog, val order: Long = 0, val source: String = "MANUAL")
 data class LogBook(val items: List<JournalItem> = emptyList()) {
     fun on(date: LocalDate) = items.filter { it.date == date }.sortedByDescending { it.instant }
     fun calories(date: LocalDate): Double? = LogRules.loggedCalories(on(date).mapNotNull { it.input as? FoodLog })
@@ -26,12 +26,12 @@ class LoggingRepository @Inject constructor(private val db: MetricMeDatabase, pr
             val p = parts.singleOrNull() ?: return@forEach
             val t = EventTime(Instant.ofEpochMilli(e.instant), e.zoneId, e.offsetSeconds)
             val input = FoodLog(e.id, t, p.name, e.mealType, p.quantity, p.unit, e.portionConsumed, p.calories, p.proteinGrams, p.carbsGrams, p.fatGrams)
-            items += JournalItem(e.id, LogKind.FOOD, p.name, t.instant, t.zoneId, LocalDate.parse(e.localDate), "${e.mealType} · ${p.quantity} ${p.unit} · ${(e.portionConsumed * 100).toInt()}% consumed", input)
+            items += JournalItem(e.id, LogKind.FOOD, p.name, t.instant, t.zoneId, LocalDate.parse(e.localDate), "${e.mealType} · ${p.quantity} ${p.unit} · ${(e.portionConsumed * 100).toInt()}% consumed", input, source = e.stamp.source)
         }
         activities.forEach { (e, exercises) ->
             val t = EventTime(Instant.ofEpochMilli(e.instant), e.zoneId, e.offsetSeconds)
             val input = ActivityLog(e.id, t, e.type, e.durationSeconds?.div(60.0), e.reportedSteps, e.intensity, e.notes, exercises.map { Exercise(it.name, it.sets, it.reps, it.loadKg) })
-            items += JournalItem(e.id, LogKind.ACTIVITY, e.type, t.instant, t.zoneId, LocalDate.parse(e.localDate), listOfNotNull(e.durationSeconds?.let { "${it / 60} min" }, e.reportedSteps?.let { "$it reported steps" }, e.intensity, exercises.takeIf { it.isNotEmpty() }?.let { "${it.size} exercises" }).joinToString(" · ").ifEmpty { "Duration and steps not recorded" }, input)
+            items += JournalItem(e.id, LogKind.ACTIVITY, e.type, t.instant, t.zoneId, LocalDate.parse(e.localDate), listOfNotNull(e.durationSeconds?.let { "${it / 60} min" }, e.reportedSteps?.let { "$it reported steps" }, e.intensity, exercises.takeIf { it.isNotEmpty() }?.let { "${it.size} exercises" }).joinToString(" · ").ifEmpty { "Duration and steps not recorded" }, input, source = e.stamp.source)
         }
         steps.forEach { e ->
             val t = EventTime(Instant.ofEpochMilli(e.instant), e.zoneId, e.offsetSeconds)

@@ -27,6 +27,7 @@ interface ProfileDao {
     ProcessingJobEntity::class, ReportEntity::class, ReceiptEntity::class, TombstoneEntity::class,
     ExerciseEntity::class, PrnEntity::class, DeliveryEntity::class, ReminderSettingsEntity::class], version = 2, exportSchema = true)
 abstract class MetricMeDatabase : RoomDatabase() {
+    abstract fun aiDao(): com.hbhaq.metricme.ai.AiDao
     abstract fun profileDao(): ProfileDao
     abstract fun loggingDao(): LoggingDao
     abstract fun routineDao(): RoutineDao

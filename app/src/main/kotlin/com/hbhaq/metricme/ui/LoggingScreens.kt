@@ -79,7 +79,7 @@ import kotlin.math.roundToInt
                     if (unknown > 0) Text("$unknown food entries have unknown calories.", style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider(color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .2f))
                     Text(target?.calories?.let { "${it.roundToInt()} kcal ${if (target.manual) "manual target" else "estimated maintenance"}" } ?: "No calorie target set", style = MaterialTheme.typography.labelLarge)
-                    Text("Manually entered · confirmed entries only", style = MaterialTheme.typography.bodySmall)
+                    Text("Confirmed entries only · AI estimates stay labeled in your journal", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -120,7 +120,7 @@ import kotlin.math.roundToInt
             Text(row.title, style = MaterialTheme.typography.titleLarge)
             Text(row.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             (row.input as? FoodLog)?.let { food -> Text(food.consumedCalories?.let { "${it.roundToInt()} kcal consumed" } ?: "Calories not recorded", style = MaterialTheme.typography.bodyMedium); Text("Protein ${food.consumedProtein?.roundToInt()?.toString() ?: "unknown"} · Carbs ${food.consumedCarbs?.roundToInt()?.toString() ?: "unknown"} · Fat ${food.consumedFat?.roundToInt()?.toString() ?: "unknown"} (g)", style = MaterialTheme.typography.bodySmall) }
-            BadgeText("Manually entered · confirmed")
+            BadgeText(if (row.source == "AI_ESTIMATED") "AI-estimated · confirmed" else "Manually entered · confirmed")
             Row { TextButton(onClick = { model.openLog(row.kind, row) }, enabled = !state.busy) { Text("Edit ${row.kind.label.lowercase()}") }; TextButton(onClick = { deleting = row.id }, enabled = !state.busy) { Text("Delete", color = MaterialTheme.colorScheme.error) } }
         } }
         val prn = state.routines.prn.filter { Instant.ofEpochMilli(it.instant).atZone(ZoneId.of(it.zoneId)).toLocalDate() == state.date }
@@ -200,8 +200,9 @@ import kotlin.math.roundToInt
     if (archive != null) AlertDialog(onDismissRequest = { archive = null }, title = { Text("Archive this routine?") }, text = { Text("Future pending occurrences and reminders will be cancelled; past history stays. Archiving in MetricMe does not change medication instructions.") }, confirmButton = { TextButton(onClick = { state.routines.definitions.firstOrNull { it.id == archive }?.let(model::archive); archive = null }) { Text("Archive routine") } }, dismissButton = { TextButton(onClick = { archive = null }) { Text("Keep routine") } })
 }
 
-@Composable fun LogPicker(onDismiss: () -> Unit, onLog: (LogKind) -> Unit, onRoutine: (RoutineKind) -> Unit) {
+@Composable fun LogPicker(onDismiss: () -> Unit, onLog: (LogKind) -> Unit, onRoutine: (RoutineKind) -> Unit, onAi: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text("What would you like to log?") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilledTonalButton(onClick = onAi, modifier = Modifier.fillMaxWidth()) { Text("Photo or audio draft") }
         LogKind.entries.forEach { kind -> OutlinedButton(onClick = { onLog(kind) }, modifier = Modifier.fillMaxWidth()) { Text(kind.label) } }
         OutlinedButton(onClick = { onRoutine(RoutineKind.HABIT) }, modifier = Modifier.fillMaxWidth()) { Text("Habit or vitamin") }
         OutlinedButton(onClick = { onRoutine(RoutineKind.MEDICATION) }, modifier = Modifier.fillMaxWidth()) { Text("Medication") }
