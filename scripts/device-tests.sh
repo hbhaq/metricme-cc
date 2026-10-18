@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The emulator action shuts the device down when this script returns.
-# Collect screenshots before teardown, including when a later test fails.
-collect_screenshots() {
-  adb pull /sdcard/Android/data/com.hbhaq.metricme/files/screenshots ui-screenshots || true
-}
-trap collect_screenshots EXIT
 bash gradlew :app:connectedDebugAndroidTest --console=plain
+
+# Gradle removes the tested app and its private files after instrumentation.
+# Reinstall the verified APK and capture a fresh, real first-launch screen.
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -W -n com.hbhaq.metricme/.MainActivity
+sleep 3
+mkdir -p ui-screenshots
+adb exec-out screencap -p > ui-screenshots/today.png

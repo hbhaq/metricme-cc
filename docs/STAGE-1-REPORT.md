@@ -49,7 +49,9 @@ Rendered visual inspection, TalkBack, 200% font scaling, physical-device behavio
 
 GitHub source upload succeeded on `main`. The first CI run failed during SDK setup because the setup action's default package list included the removed `tools` package. The workflow now explicitly requests `platform-tools` and pins command-line tools 13114758, matching the locally working tool release. Emulator execution is still pending the corrected CI run.
 
-The next CI run passed the build job and ran all six emulator tests: five passed, while schema reopening failed with a serialization runtime linkage error. The app and test configurations now share a serialization BOM, and screenshot collection runs before emulator teardown. The corrected emulator run is pending; no failing test is disabled or replaced with a mock.
+The next CI run passed the build job and ran all six emulator tests: five passed, while schema reopening failed with a serialization runtime linkage error. The app and test configurations now share a serialization BOM. The corrected run at https://github.com/hbhaq/metricme-cc/actions/runs/39128451163 passed both jobs, including all six emulator tests. No failing test was disabled or replaced with a mock.
+
+Gradle removes the installed package and its private screenshot files after instrumentation. The CI capture script therefore reinstalls the verified APK and captures a real first-launch screen before emulator teardown. This capture-only follow-up is pending visual inspection; application source and the six passing tests are unchanged.
 
 ## Incomplete / later stages
 
