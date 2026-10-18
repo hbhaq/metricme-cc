@@ -69,7 +69,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 destinations.forEach { destination ->
-                    NavigationBarItem(selected = route == destination.route || (route in setOf("measurements", "routines") && destination.route == "you"),
+                    NavigationBarItem(selected = route == destination.route || (route in setOf("measurements", "routines", "assist") && destination.route == "you"),
                         onClick = { nav.navigate(destination.route) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } },
                         icon = { Icon(destination.icon, contentDescription = null) }, label = { Text(destination.label) })
                 }
