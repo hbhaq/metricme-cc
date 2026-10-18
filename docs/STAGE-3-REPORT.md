@@ -18,11 +18,25 @@ Scope: Ktor backend, authentication, validated OpenAI adapters, native photo/aud
 
 ## Verification
 
-Final checks are in progress. An earlier backend CI passed its contract, mocked OpenAI, JWT and actual PostgreSQL tests. Android CI found two cross-module Kotlin smart-cast errors; those are fixed in the current revision and are not claimed passed until its final CI results are recorded.
+Verified source commit: `aaeec1d83e1c2b036b657b298ace43988a84776e`. Both final workflows passed: [Android build and emulator](https://github.com/hbhaq/metricme-cc/actions/runs/39152724736), [backend, PostgreSQL and container](https://github.com/hbhaq/metricme-cc/actions/runs/39152724727). Subsequent delivery changes contain only documentation and actual emulator screenshots.
+
+| Suite / check | Actual result |
+|---|---|
+| Pure domain tests | 29 passed, 0 failures, 0 skips |
+| Shared contract/validation/retry tests | 9 passed, 0 failures, 0 skips |
+| Backend tests | 15 passed, 0 failures, 0 skips |
+| API 35 emulator tests | 29 passed, 0 failures, 0 skips |
+| Debug app and instrumented-test APK build | Passed |
+| Android lint | 0 errors, 9 warnings: 1 ExifInterface advisory and 8 UseKtx style suggestions |
+| Actual Docker image build and smoke test | Passed: PostgreSQL readiness, 401 for protected unauthenticated routes, non-root runtime |
+
+**82 tests passed in total.** The backend tests include generated-key JWT verification, mocked Responses and audio-transcription/extraction, malformed/refused/negative/incomplete output, stalled response-body timeout, ownership/isolation, and actual PostgreSQL concurrent claims, persistence, cancellation and Retry-After deadlines. Emulator tests include metadata removal/orientation, invalid photo cleanup, offline draft edits/rotation without uploading, credential-free sample isolation, atomic confirmation, unknown steps and stale/cancelled results, plus all earlier logging/profile/reminder checks.
+
+Verification exposed and fixed a same-timestamp recovery bug by selecting jobs by monotonic revision before timestamp, two cross-module nullability errors, and non-void JUnit test declarations. The final complete suites pass; tests were not disabled to obtain these results.
 
 Local Windows execution passed eight shared contract tests and six backend route/media/cancellation tests. The PostgreSQL test was explicitly skipped locally because `TEST_DATABASE_URL` was not set; CI supplies PostgreSQL. A local combined Android attempt hit the previously observed Windows generated-output deletion failure. It is not reported as a successful Android build.
 
-Commands being verified:
+Commands executed successfully in CI:
 
 ```sh
 ./gradlew -PbackendOnly :contracts:test :backend:test :backend:installDist :backend:distZip
@@ -33,6 +47,10 @@ bash scripts/device-tests.sh
 ```
 
 No paid/live OpenAI request was made. No real identity-provider account was used. All external model responses in tests are mocked; JWT tests use generated test signing keys.
+
+Read the actual test reports and packaged APK metadata from the CI artifacts. The APK is `com.hbhaq.metricme`, debug version `0.3.0`, version code 3, minSdk 26. The complete screenshot archive SHA-256 matched GitHub's published digest. The final Today and AI-assistance screenshots were visually inspected and saved in `docs/screenshots/`; they are real app captures, not mockups.
+
+[Download debug APK/build reports](https://github.com/hbhaq/metricme-cc/actions/runs/39152724736/artifacts/12145927133) and extract `app/build/outputs/apk/debug/app-debug.apk`. [Backend distribution and reports](https://github.com/hbhaq/metricme-cc/actions/runs/39152724727/artifacts/12145133826). [Device reports and screenshots](https://github.com/hbhaq/metricme-cc/actions/runs/39152724736/artifacts/12145947097). Artifacts expire 2027-01-16; source remains rebuildable. Persistent release/update signing is not configured for these development artifacts; it remains Stage 5.
 
 ## Railway and credentials
 

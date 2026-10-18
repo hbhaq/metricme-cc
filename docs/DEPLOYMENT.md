@@ -4,7 +4,7 @@ Railway hosts the Ktor API. The native Android UI is installed from an APK; it i
 
 ## Current deployment status
 
-The user authorized GitHub upload and Railway deployment. Creating a private `MetricMe` Railway project on 2026-10-18 was rejected by Railway with: **“Free plan resource provision limit exceeded. Please upgrade to provision more resources!”** No MetricMe service, database, public URL or paid plan change was created. Existing GradeLens and LectureDubber resources were not modified. Deployment remains blocked until the account has capacity; this is separate from the code/build verification.
+The user authorized GitHub upload and Railway deployment. Creating a private `MetricMe` Railway project on 2026-10-18 was rejected by Railway with: **“Free plan resource provision limit exceeded. Please upgrade to provision more resources!”** No MetricMe service, database, public URL or paid plan change was created. Existing applications and their data were not modified. Deployment remains blocked until the account has capacity; this is separate from the code/build verification.
 
 ## Railway configuration
 
