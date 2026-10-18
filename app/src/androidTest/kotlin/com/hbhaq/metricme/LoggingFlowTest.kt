@@ -8,7 +8,11 @@ import org.junit.Test
 class LoggingFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun begin(label: String) {
-        compose.waitUntil(20000) { compose.onAllNodesWithText("Log", useUnmergedTree = false).fetchSemanticsNodes().isNotEmpty() }
+        try {
+            compose.waitUntil(20000) { compose.onAllNodesWithText("Log", useUnmergedTree = false).fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: Exception) {
+            throw AssertionError("Log entry point missing. UI:\n" + compose.onRoot().printToString(), e)
+        }
         compose.onNodeWithText("Log").performClick(); compose.onNodeWithText(label, substring = false).performClick()
     }
     @Test fun foodSaveEditAndDeleteWorkWithoutAnAccount() {
@@ -42,3 +46,4 @@ class LoggingFlowTest {
         compose.onNodeWithText("Delete", substring = false).performScrollTo().performClick(); compose.onNodeWithText("Delete record").performClick()
     }
 }
+
