@@ -4,9 +4,9 @@ Vercel is the selected host for the Ktor API. The native Android UI is installed
 
 ## Verified deployment — 2026-10-19
 
-Production API: **https://metricme-cc.vercel.app**. Deployment `dpl_7FnHW5v82urbZGLrRSCtwh9kDtEZ` runs the existing Ktor/JVM container on the Hobby plan. The source baseline was `9d91d8e`, with the Vercel configuration subsequently committed as `7ab4979`. No backend application code or Android APK was changed for this deployment.
+Production API: **https://metricme-cc.vercel.app**. Deployment `dpl_BnN9Vg5G2uTm9t4jMwg2YPEYyE4Y` runs the existing Ktor/JVM container on the Hobby plan, built from source commit `1592d702`. After the user accepted Neon's terms, the `metricme-db` PostgreSQL database was provisioned on Neon's Free plan and connected through Vercel's managed environment variables. No backend application code or Android APK was changed for this deployment.
 
-Unauthenticated public production requests returned: `GET /` 200, `GET /health/live` 200 (`aiConfigured:false`, `authConfigured:false`), `GET /health/ready` 503 (`database_unavailable`), `POST /v1/food-estimates` 401, and `GET /v1/jobs/{id}` 401. The database has not been provisioned because Neon requires account-holder acceptance of its Marketplace terms. Real AI requests and real OIDC login remain unverified and disabled. The earlier Stage 3 test results are historical verification of the unchanged application; deployment checks do not replace them.
+Unauthenticated public production requests returned: `GET /health/live` 200 (`aiConfigured:false`, `authConfigured:false`), `GET /health/ready` 200 (`status:ready`), `POST /v1/food-estimates` 401, and `GET /v1/jobs/{id}` 401. Readiness tests an actual PostgreSQL connection; successful startup also creates the additive receipt schema. Real AI requests and real OIDC login remain unverified and disabled. The earlier Stage 3 test results are historical verification of the unchanged application; deployment checks do not replace them.
 
 ## Vercel configuration
 
@@ -14,7 +14,7 @@ The project is `me-8d70/metricme-cc` on the existing Hobby plan. `vercel.json` d
 
 Set `PORT=8080` in Production and Preview so Vercel routes to the non-root Java process. Deploy from the linked root with `vercel deploy --non-interactive --scope me-8d70`; use `--prod` for production after verifying the preview. `.vercelignore` excludes Android sources, local tools, caches, build outputs, signing files and local environment files. `.vercel/` and `.env.*` are ignored by Git. Do not commit provider credentials.
 
-The backend needs `DATABASE_URL` for PostgreSQL. Provisioning the free Neon database requires the account holder to accept the Neon Marketplace terms first. No paid database plan is authorized. Keep `OPENAI_API_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` and `OIDC_JWKS_URL` unset until the intended provider is configured. Without these settings the API remains locked; `/health/live` can succeed while `/health/ready` returns 503 for an unavailable database. Neither liveness nor a successful platform deployment implies AI readiness.
+The backend needs `DATABASE_URL` for PostgreSQL. After the account holder accepted Neon's Marketplace terms, `metricme-db` was provisioned on the **Free** (`free_v3`) plan in `iad1` and connected to this project. The integration supplies `DATABASE_URL` to Production, Preview and Development. No database credentials were copied into source or Android, and no paid plan was selected. Keep `OPENAI_API_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` and `OIDC_JWKS_URL` unset until the intended provider is configured. Without these settings the API remains locked. Neither database readiness nor a successful platform deployment implies AI readiness.
 
 Vercel scales idle containers down, so its in-process hourly cleanup is opportunistic. Cleanup also runs when the process starts and on new job claims; do not promise deletion at an exact wall-clock deadline while the service is scaled to zero. Configure a durable scheduled database cleanup before making a strict retention guarantee.
 
@@ -70,7 +70,7 @@ OpenAI requests use `store:false`; this is not a promise of zero OpenAI retentio
 ## Rollout checklist
 
 - [x] Vercel container live and public HTTPS health/authentication checks confirmed.
-- [ ] Neon terms accepted and PostgreSQL provisioned; readiness returns 200.
+- [x] Neon terms accepted and PostgreSQL provisioned; readiness returns 200.
 - [ ] Vercel media-envelope bound or private direct-upload flow implemented and verified.
 - [ ] OIDC native client, exact issuer/audience/JWKS and Android callback verified.
 - [ ] OpenAI key stored only in Vercel secrets and account access to configured models verified.
