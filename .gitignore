@@ -10,3 +10,7 @@ local.properties
 *.jks
 captures/
 *.hprof
+
+.vercel/
+.env.*
+!.env.example

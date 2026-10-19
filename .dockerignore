@@ -8,3 +8,6 @@ local.properties
 .env
 *.keystore
 *.jks
+
+.env.*
+.vercel

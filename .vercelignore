@@ -1,0 +1,16 @@
+.git
+.tools
+.gradle
+.kotlin
+.vercel
+.env
+.env.*
+local.properties
+**/build
+**/.gradle
+**/.env*
+*.keystore
+*.jks
+app
+docs
+.github
