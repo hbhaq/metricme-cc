@@ -2,7 +2,7 @@
 
 A calm, local-first native Android habit and health journal. Kotlin, Jetpack Compose Material 3, Hilt, Room, and a pure Kotlin domain module.
 
-**Current implementation: Stage 3.** Native offline logging and reminders now include private photo/audio drafts, editable AI review, consented offline uploads, OIDC sign-in and a Ktor/PostgreSQL backend. Verification is recorded in the stage report. Railway deployment is blocked by the account's free-plan resource limit; real AI stays locked until server-side credentials and OIDC are configured. Analytics/coaching are Stage 4; final privacy/deletion and accessibility are Stage 5. Do not use this development build as medical advice.
+**Current implementation: Stage 3.** Native offline logging and reminders now include private photo/audio drafts, editable AI review, consented offline uploads, OIDC sign-in and a Ktor/PostgreSQL backend. Verification is recorded in the stage report. Vercel is the selected API host; real AI stays locked until the database, server-side credentials and OIDC are configured. Analytics/coaching are Stage 4; final privacy/deletion and accessibility are Stage 5. Do not use this development build as medical advice.
 
 <img src="docs/screenshots/today.png" width="320" alt="MetricMe Today screen captured from the real Android app on the CI emulator">
 <img src="docs/screenshots/ai-assist.png" width="320" alt="MetricMe native photo and audio draft screen captured during the actual emulator UI test">
@@ -34,7 +34,7 @@ Open **You → Habits, medications & reminders** to manage routines and enable o
 
 Use **Log → Photo or audio draft**, or **You → Photo, audio & private drafts**. Take/select a photo or record a short activity note, keep it locally, optionally add context, and explicitly consent before queuing an upload. Review/edit the result and confirm before it enters totals. Food batches save as independently editable entries in one transaction. Cancelled/deleted drafts cannot be populated by late results. Demo mode offers labeled local sample reviews without credentials or personal writes.
 
-See [deployment and sign-in setup](docs/DEPLOYMENT.md) for the Ktor API, Docker image, PostgreSQL, Railway variables and public Android connection settings. No OpenAI key belongs in Android.
+See [deployment and sign-in setup](docs/DEPLOYMENT.md) for the Vercel container service, Ktor API, PostgreSQL, server variables and public Android connection settings. No OpenAI key belongs in Android.
 
 ## Rules that matter
 
@@ -49,7 +49,7 @@ See [deployment and sign-in setup](docs/DEPLOYMENT.md) for the Ktor API, Docker 
 
 Notifications and microphone access are contextual and optional. Photo Picker needs no blanket storage permission; external camera capture uses a scoped FileProvider. Media stays private until the user explicitly consents to an authenticated upload. Room uses the Android app sandbox and device file-based encryption; it is **not separately database-encrypted**. Session state is separately encrypted with an Android Keystore key. Cloud backup and device transfer are excluded. No OpenAI key is embedded. Pending media expires after seven days, confirmed media within 24 hours, and deleted media immediately; force-stopped cleanup resumes on the next permitted run. Complete account deletion controls arrive in Stage 5. Do not enter sensitive real data into an unreviewed development build.
 
-Railway will host the Ktor API, while Android UI ships as an APK. Railway rejected new provisioning with “Free plan resource provision limit exceeded”; no live MetricMe URL exists yet. GitHub upload and deployment are authorized, but no existing apps or paid plan were changed to bypass this limit. The staged brief requires stopping after each stage until “continue.”
+The Ktor API is live at [metricme-cc.vercel.app](https://metricme-cc.vercel.app) using the existing Java Docker image on Vercel. Liveness returns 200 and protected routes reject unauthenticated requests with 401. Database readiness returns 503 until Neon provisioning is completed; real AI remains disabled. Android UI ships as an APK. Railway previously rejected new provisioning with “Free plan resource provision limit exceeded,” and the user selected Vercel instead. No paid plan was enabled. The staged brief requires stopping after each stage until “continue.”
 
 [Stage 3 Android checks and debug APK](https://github.com/hbhaq/metricme-cc/actions/runs/39152724736) · [Backend/PostgreSQL/container checks](https://github.com/hbhaq/metricme-cc/actions/runs/39152724727). **82 tests passed**: 29 domain, 9 shared contracts, 15 backend and 29 emulator tests, with no failures or skips. Lint: 0 errors, 9 warnings. The actual non-root deployment container passed its PostgreSQL/readiness/authentication smoke checks. APK version 0.3.0 is a development debug build; stable release/update signing remains Stage 5.
 

@@ -1,8 +1,28 @@
 # MetricMe API deployment
 
-Railway hosts the Ktor API. The native Android UI is installed from an APK; it is not a website hosted on Railway.
+Vercel is the selected host for the Ktor API. The native Android UI is installed from an APK; it is not a browser application.
 
-## Current deployment status
+## Verified deployment — 2026-10-19
+
+Production API: **https://metricme-cc.vercel.app**. Deployment `dpl_7FnHW5v82urbZGLrRSCtwh9kDtEZ` runs the existing Ktor/JVM container on the Hobby plan. The source baseline was `9d91d8e`, with the Vercel configuration subsequently committed as `7ab4979`. No backend application code or Android APK was changed for this deployment.
+
+Unauthenticated public production requests returned: `GET /` 200, `GET /health/live` 200 (`aiConfigured:false`, `authConfigured:false`), `GET /health/ready` 503 (`database_unavailable`), `POST /v1/food-estimates` 401, and `GET /v1/jobs/{id}` 401. The database has not been provisioned because Neon requires account-holder acceptance of its Marketplace terms. Real AI requests and real OIDC login remain unverified and disabled. The earlier Stage 3 test results are historical verification of the unchanged application; deployment checks do not replace them.
+
+## Vercel configuration
+
+The project is `me-8d70/metricme-cc` on the existing Hobby plan. `vercel.json` defines a container service rooted at the repository, with `Dockerfile.vercel` as its entrypoint and a catch-all rewrite to the API. Vercel's current container runtime supports the existing JVM backend; no JavaScript rewrite is needed. See [container runtime](https://vercel.com/docs/functions/runtimes/container) and [Services](https://vercel.com/docs/services).
+
+Set `PORT=8080` in Production and Preview so Vercel routes to the non-root Java process. Deploy from the linked root with `vercel deploy --non-interactive --scope me-8d70`; use `--prod` for production after verifying the preview. `.vercelignore` excludes Android sources, local tools, caches, build outputs, signing files and local environment files. `.vercel/` and `.env.*` are ignored by Git. Do not commit provider credentials.
+
+The backend needs `DATABASE_URL` for PostgreSQL. Provisioning the free Neon database requires the account holder to accept the Neon Marketplace terms first. No paid database plan is authorized. Keep `OPENAI_API_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` and `OIDC_JWKS_URL` unset until the intended provider is configured. Without these settings the API remains locked; `/health/live` can succeed while `/health/ready` returns 503 for an unavailable database. Neither liveness nor a successful platform deployment implies AI readiness.
+
+Vercel scales idle containers down, so its in-process hourly cleanup is opportunistic. Cleanup also runs when the process starts and on new job claims; do not promise deletion at an exact wall-clock deadline while the service is scaled to zero. Configure a durable scheduled database cleanup before making a strict retention guarantee.
+
+Vercel documents a [4.5 MB function payload limit](https://vercel.com/docs/functions/limitations#request-body-size), below this portable backend's 15 MiB JSON envelope bound. Base64 increases media size by about one third: the current maximum 120-second PCM recording exceeds the platform envelope. Before enabling real uploads on this host, implement and verify a client-side envelope bound or a consented private direct-upload flow. Larger requests can return platform 413 errors before reaching Ktor. Live large-media behavior has not been verified.
+
+Automatic Git deployments also require connecting GitHub under the Vercel account's Login Connections. GitHub source uploads and authenticated CLI deployments can work before this separate account connection is enabled.
+
+## Previous Railway deployment attempt
 
 The user authorized GitHub upload and Railway deployment. Creating a private `MetricMe` Railway project on 2026-10-18 was rejected by Railway with: **“Free plan resource provision limit exceeded. Please upgrade to provision more resources!”** No MetricMe service, database, public URL or paid plan change was created. Existing applications and their data were not modified. Deployment remains blocked until the account has capacity; this is separate from the code/build verification.
 
@@ -49,10 +69,11 @@ OpenAI requests use `store:false`; this is not a promise of zero OpenAI retentio
 
 ## Rollout checklist
 
-- [ ] Railway capacity available and MetricMe/PostgreSQL provisioned.
-- [ ] Image build and health checks pass in Railway; public HTTPS domain confirmed.
+- [x] Vercel container live and public HTTPS health/authentication checks confirmed.
+- [ ] Neon terms accepted and PostgreSQL provisioned; readiness returns 200.
+- [ ] Vercel media-envelope bound or private direct-upload flow implemented and verified.
 - [ ] OIDC native client, exact issuer/audience/JWKS and Android callback verified.
-- [ ] OpenAI key stored only in Railway and account access to configured models verified.
+- [ ] OpenAI key stored only in Vercel secrets and account access to configured models verified.
 - [ ] One explicit, opted-in real photo/audio request tested; costs and retention reviewed.
 - [ ] Physical-device camera/audio interruption, OAuth return, background queue, revoked permissions, offline cancellation and process recovery checked.
 - [ ] Stage 5 privacy/deletion, accessibility and release/signing review completed.
