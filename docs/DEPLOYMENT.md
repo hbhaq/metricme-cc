@@ -14,7 +14,7 @@ The project is `me-8d70/metricme-cc` on the existing Hobby plan. `vercel.json` d
 
 Set `PORT=8080` in Production and Preview so Vercel routes to the non-root Java process. Deploy from the linked root with `vercel deploy --non-interactive --scope me-8d70`; use `--prod` for production after verifying the preview. `.vercelignore` excludes Android sources, local tools, caches, build outputs, signing files and local environment files. `.vercel/` and `.env.*` are ignored by Git. Do not commit provider credentials.
 
-The backend needs `DATABASE_URL` for PostgreSQL. After the account holder accepted Neon's Marketplace terms, `metricme-db` was provisioned on the **Free** (`free_v3`) plan in `iad1` and connected to this project. The integration supplies `DATABASE_URL` to Production, Preview and Development. No database credentials were copied into source or Android, and no paid plan was selected. Keep `OPENAI_API_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` and `OIDC_JWKS_URL` unset until the intended provider is configured. Without these settings the API remains locked. Neither database readiness nor a successful platform deployment implies AI readiness.
+The backend needs `DATABASE_URL` for PostgreSQL. After the account holder accepted Neon's Marketplace terms, `metricme-db` was provisioned on the **Free** (`free_v3`) plan in `iad1` and connected to this project. The integration supplies `DATABASE_URL` to Production, Preview and Development. No database credentials were copied into source or Android, and no paid plan was selected. The account holder supplied `OPENAI_API_KEY` through Vercel, and the approved Auth0 configuration supplies `OIDC_ISSUER`, `OIDC_AUDIENCE` and `OIDC_JWKS_URL`. Keep all server variables out of Android. Neither configuration detection nor database readiness verifies a completed user login or a successful paid AI request.
 
 Vercel scales idle containers down, so its in-process hourly cleanup is opportunistic. Cleanup also runs when the process starts and on new job claims; do not promise deletion at an exact wall-clock deadline while the service is scaled to zero. Configure a durable scheduled database cleanup before making a strict retention guarantee.
 
@@ -38,6 +38,25 @@ The user authorized GitHub upload and Railway deployment. Creating a private `Me
 The Docker image uses a JDK build stage and a non-root JRE runtime with a 256 MiB Java heap. Two uploads/processes are allowed at a time. The server accepts bounded JSON envelopes containing base64 media, with 10 MiB decoded limits, a 20-second upload read timeout, and validated file signatures. Images are JPEG/PNG up to 4,194,304 pixels; the app transcodes to at most 2048 pixels on either side. Audio is canonical mono 16-bit PCM WAV at 16 kHz, up to 120 seconds.
 
 ## Sign-in provider setup
+
+### Configured Auth0 connection — 2026-11-01
+
+The account holder approved the MetricMe native client and API configuration in tenant `dev-sjboqyjugly8goce`. The public connection values for the existing Android build are:
+
+| Android connection field | Value |
+| --- | --- |
+| Backend URL | `https://metricme-cc.vercel.app/` |
+| OIDC issuer | `https://dev-sjboqyjugly8goce.us.auth0.com/` |
+| Android client ID | `rKSUFgidA8h6Ch2d00iZkeBCluSDmayl` |
+| API audience | `https://metricme-cc.vercel.app` |
+
+Open **You → Photo, audio & private drafts → Set up AI connection**, enter these public values, save, and sign in in the system browser. Use Auth0's email/password connection to create or access your MetricMe account. The Auth0 dashboard administrator account is separate from an application's end-user account. No client secret or OpenAI key belongs in these fields.
+
+`MetricMe Android` is a first-party Native application with the exact callback `com.hbhaq.metricme:/oauth2redirect`. Authorization Code and Refresh Token grants are enabled; Implicit is disabled. Refresh tokens rotate with a 10-second overlap, seven-day inactivity expiry, and 30-day maximum lifetime. Auth0's confirmation for non-verifiable custom-scheme callbacks remains enabled. The existing app uses AppAuth's authorization-code PKCE flow and encrypted local session storage.
+
+`MetricMe API` uses RS256 access tokens with a one-hour lifetime and offline access enabled. Its user-delegated access policy is per-application, and only the MetricMe Android client was granted access. Client-credentials access is disabled. The backend checks the exact issuer, API audience, RSA signature, expiry and subject. Production Vercel variables `OIDC_ISSUER`, `OIDC_AUDIENCE` and `OIDC_JWKS_URL` point to this tenant; the signing-key URL is `https://dev-sjboqyjugly8goce.us.auth0.com/.well-known/jwks.json`.
+
+The tenant discovery document was fetched successfully. A public `/authorize` request with the configured audience, S256 PKCE challenge and callback returned the expected `login_required` callback when no user session was supplied. This verifies the authorization request is accepted, not a completed user login. Production deployment `dpl_FYUw9MoHDiR9X6zidS76eeC24MxS`, built from `d1f84b2766f5`, reports liveness and database readiness 200 with `aiConfigured:true` and `authConfigured:true`. A POST with no bearer and a job lookup with an invalid bearer both returned 401. Configuration detection does not verify OpenAI key validity or model access. Real Android browser return, token exchange, refresh, and account switching still need an end-user device test. No user password was collected and no paid AI request was made during setup. The platform upload-size limitation documented above still applies.
 
 OIDC (OpenID Connect) delegates sign-in to an identity provider. Use a native/public Android client with authorization-code + PKCE, no client secret, and redirect URI `com.hbhaq.metricme:/oauth2redirect`. Register a dedicated API audience and RS256 access tokens. Configure issuer and JWKS URLs exactly as the provider publishes them; issuer trailing slashes can be significant. Tokens must include `sub`, `exp`, the expected issuer and API audience. The backend does not treat an ID token or a public client ID as user authentication.
 
