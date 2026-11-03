@@ -28,6 +28,10 @@ class NavigationTest {
         compose.onNodeWithText("Unsaved draft").assertExists()
         compose.onNodeWithText("Cancel").performClick()
         compose.onNodeWithText("Unsaved draft").assertDoesNotExist()
+        compose.onNodeWithText("Age").assertExists()
+        compose.onNodeWithText("Gender").assertExists()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Daily calorie target"))
+        compose.onNodeWithText("Daily calorie target").assertExists()
         screenshot("you")
     }
     @Test fun allFourTabsAreReachableAndInsightsDraftSurvivesSwitchingAndRotation() {
@@ -36,6 +40,7 @@ class NavigationTest {
             compose.onNodeWithTag("nav-insights").performClick()
             compose.onNodeWithText("Ask your history").assertIsDisplayed()
             compose.onNodeWithTag("nav-you").performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Measurement history"))
             compose.onNodeWithText("Measurement history").assertExists()
             compose.onNodeWithTag("nav-setup").performClick()
             compose.onNodeWithText("AI connection").assertExists()
@@ -69,6 +74,7 @@ class NavigationTest {
         compose.onNodeWithText("All").assertDoesNotExist()
         compose.onNodeWithText("Your entries").assertDoesNotExist()
         compose.onNodeWithText("Offline manual records").assertDoesNotExist()
+        compose.onNodeWithText("Log food & drinks, medication & supplements, sleep, exercise & daily activity, water, mood, body measurements, or notes about anything else.").assertExists()
         screenshot("log")
         compose.onNodeWithContentDescription("Add attachment").performClick()
         compose.onNodeWithText("Photo library").assertIsDisplayed()

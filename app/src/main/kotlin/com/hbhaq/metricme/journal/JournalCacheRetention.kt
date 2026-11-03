@@ -6,7 +6,7 @@ import com.hbhaq.metricme.contracts.*
 import java.io.File
 
 internal fun trimMealCache(context:Context) {
-    File(context.filesDir,"journal-cache").listFiles().orEmpty().filter { (it.name.endsWith("-pending.json") || it.name.endsWith("-question.json")) && it.lastModified()<MealRetention.cutoff().toEpochMilli() }.forEach { AtomicFile(it).delete() }
+    File(context.filesDir,"journal-cache").listFiles().orEmpty().filter { (it.name.endsWith("-pending.json") || it.name.endsWith("-question.json") || it.name.endsWith("-log-context.json") || it.name.endsWith("-insight-context.json")) && it.lastModified()<MealRetention.cutoff().toEpochMilli() }.forEach { AtomicFile(it).delete() }
     File(context.filesDir,"journal-cache").listFiles().orEmpty().filter { it.name.endsWith("-entries.json") }.forEach { file ->
         runCatching {
             val target=AtomicFile(file)

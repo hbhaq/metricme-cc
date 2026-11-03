@@ -13,8 +13,8 @@ android {
         applicationId = "com.hbhaq.metricme"
         minSdk = 26
         targetSdk = 37
-        versionCode = 7
-        versionName = "0.5.0"
+        versionCode = 8
+        versionName = "0.5.1"
         manifestPlaceholders["appAuthRedirectScheme"] = "com.hbhaq.metricme"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

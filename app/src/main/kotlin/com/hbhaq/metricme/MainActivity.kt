@@ -17,6 +17,7 @@ class MainActivity : ComponentActivity() {
         val logging = ViewModelProvider(this)[LoggingViewModel::class.java]
         val ai = ViewModelProvider(this)[com.hbhaq.metricme.ai.AiViewModel::class.java]
         val journal = ViewModelProvider(this)[com.hbhaq.metricme.journal.JournalViewModel::class.java]
-        setContent { MetricMeTheme { MetricMeApp(model, logging, ai, journal) } }
+        val nutrition = ViewModelProvider(this)[com.hbhaq.metricme.journal.NutritionViewModel::class.java]
+        setContent { MetricMeTheme { MetricMeApp(model, logging, ai, journal, nutrition) } }
     }
 }

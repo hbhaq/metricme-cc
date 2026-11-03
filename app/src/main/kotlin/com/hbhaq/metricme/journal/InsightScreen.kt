@@ -36,7 +36,8 @@ import com.hbhaq.metricme.ui.ErrorMessage
                 Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
                     ChatUser(reply.transcript)
                     val summary=reply.insights
-                    if(summary==null) Text(reply.message) else InsightTable(summary)
+                    Text(reply.message)
+                    if(summary!=null) InsightTable(summary)
                     if(reply.insights==null && reply.references.isNotEmpty()) ReferenceTable(reply.references)
                 }
             }

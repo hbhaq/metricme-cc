@@ -45,7 +45,7 @@ private val destinations = listOf(
 )
 
 @Composable
-fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbhaq.metricme.ai.AiViewModel, journal: com.hbhaq.metricme.journal.JournalViewModel) {
+fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbhaq.metricme.ai.AiViewModel, journal: com.hbhaq.metricme.journal.JournalViewModel,nutrition:com.hbhaq.metricme.journal.NutritionViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val form by model.formKind.collectAsStateWithLifecycle()
     val logs by logging.state.collectAsStateWithLifecycle()
@@ -76,8 +76,8 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
                 when(screen) {
                     "journal" -> com.hbhaq.metricme.journal.ConversationalJournal(journal, { screen="setup" },state.demo)
                     "insights" -> com.hbhaq.metricme.journal.CloudInsightsScreen(journal,state.demo) { screen="setup" }
-                    "you" -> YouScreen(state,model,{ screen="measurements" })
-                    "setup" -> SetupScreen(state,model,ai,journal,{ screen=it })
+                    "you" -> YouScreen(state,model,{ screen="measurements" },nutrition,{ screen="setup" })
+                    "setup" -> SetupScreen(state,model,ai,journal,nutrition,{ screen=it })
                     "measurements" -> MeasurementScreen(state,model) { screen="you" }
                     "offline" -> ManualJournalScreen(logs,logging,{ screen="measurements" })
                     "routines" -> RoutinesScreen(logs,logging,state.demo) { screen="setup" }
@@ -91,7 +91,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     if(logEditor.isNotEmpty() && !state.demo) LoggingEditor(logging,logs,logEditor)
 }
 
-@Composable private fun SetupScreen(state:AppState,model:MetricMeViewModel,ai:com.hbhaq.metricme.ai.AiViewModel,journal:com.hbhaq.metricme.journal.JournalViewModel,open:(String)->Unit) {
+@Composable private fun SetupScreen(state:AppState,model:MetricMeViewModel,ai:com.hbhaq.metricme.ai.AiViewModel,journal:com.hbhaq.metricme.journal.JournalViewModel,nutrition:com.hbhaq.metricme.journal.NutritionViewModel,open:(String)->Unit) {
     val error by ai.error.collectAsStateWithLifecycle()
     val cloud by journal.state.collectAsStateWithLifecycle()
     var more by rememberSaveable { mutableStateOf(false) }
@@ -110,6 +110,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
                 Switch(state.demo,model::setDemo,modifier=Modifier.semantics { contentDescription="Explore demo mode" })
             } }
             if(cloud.signedIn) {
+                item { TextButton(onClick={ nutrition.repository.revoke() }) { Text("Stop sharing profile with AI") } }
                 if(cloud.consentAccepted) item { TextButton(onClick=journal::revokeConsent,enabled=!cloud.busy) { Text("Reset AI consent") } }
                 item { TextButton(onClick={ deleteCloud=true },enabled=!cloud.busy) { Text("Delete cloud data",color=MaterialTheme.colorScheme.error) } }
             }
@@ -153,14 +154,14 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     }
 }
 
-@Composable private fun YouScreen(state:AppState,model:MetricMeViewModel,history:()->Unit) {
+@Composable private fun YouScreen(state:AppState,model:MetricMeViewModel,history:()->Unit,nutrition:com.hbhaq.metricme.journal.NutritionViewModel,setup:()->Unit) {
     val profile=state.profile
     val locale=LocalLocale.current.platformLocale
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         item { Panel {
             Text(profile?.name?.takeIf(String::isNotBlank) ?: "Your name",style=MaterialTheme.typography.titleLarge)
-            profile?.birthDate?.let { Text(java.time.Period.between(it,model.today()).years.toString()+" years") }
-            profile?.genderIdentity?.takeIf(String::isNotBlank)?.let { Text(it) }
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text("Age"); Text(profile?.birthDate?.let { java.time.Period.between(it,model.today()).years.toString()+" years" } ?: "Not set") }
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text("Gender"); Text(profile?.genderIdentity?.takeIf(String::isNotBlank) ?: "Not set") }
             TextButton(onClick=model::openProfile,enabled=!state.demo) { Text(if(profile==null) "Add details" else "Edit details") }
         } }
         items(MeasurementKind.entries.toList()) { kind ->
@@ -175,6 +176,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
                 }
             }
         }
+        item { com.hbhaq.metricme.journal.NutritionCard(nutrition,setup,state.demo) }
         item { TextButton(onClick=history) { Text("Measurement history") } }
     }
 }
@@ -251,7 +253,7 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
     val gender by model.gender.collectAsStateWithLifecycle()
     Text("Your details",style=MaterialTheme.typography.headlineMedium)
     Field("Name",name,{ model.text("name",it) })
-    Field("Date of birth",birth,{ model.text("birthDate",it) },"YYYY-MM-DD · used to calculate age")
+    Field("Date of birth (for age)",birth,{ model.text("birthDate",it) },"YYYY-MM-DD · used to calculate age")
     Field("Gender",gender,{ model.text("gender",it) })
 }
 @Composable internal fun Choice(label: String, selected: Boolean, click: () -> Unit) {

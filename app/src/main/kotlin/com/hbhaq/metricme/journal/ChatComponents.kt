@@ -34,6 +34,7 @@ internal fun journalDate(fact:JournalFact):String=runCatching {
         TableRow("Days logged",summary.daysLogged.toString()+" / "+summary.daysInPeriod)
         summary.foodCalories?.let { TableRow("Food subtotal",it.toLong().toString()+" kcal") }
         summary.averageSleepMinutes?.let { TableRow("Sleep / logged day",String.format(java.util.Locale.ROOT,"%.1f h",it/60)) }
+        summary.dailyCalorieTarget?.let { TableRow("Daily target",it.toString()+" kcal"); Text("Applies from "+summary.targetEffectiveFrom,style=MaterialTheme.typography.bodySmall) }
         summary.reportedSteps?.let { TableRow("Reported steps",it.toString()) }
         Text("Recorded entries only; unlogged days are unknown.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }

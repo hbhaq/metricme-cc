@@ -61,7 +61,7 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),state=list,contentPadding=PaddingValues(20.dp,12.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
             if(state.before!=null) item { TextButton(onClick=model::more,enabled=!state.busy) { Text("Earlier messages") } }
-            if(history.isEmpty() && replies.isEmpty()) item { Box(Modifier.fillParentMaxHeight(.65f).fillMaxWidth(),contentAlignment=Alignment.Center) { Text("What's happening?",style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onSurfaceVariant) } }
+            if(history.isEmpty() && replies.isEmpty()) item { Box(Modifier.fillParentMaxHeight(.65f).fillMaxWidth(),contentAlignment=Alignment.Center) { Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(12.dp)) { Text("What's happening?",style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onSurfaceVariant); Text("Log food & drinks, medication & supplements, sleep, exercise & daily activity, water, mood, body measurements, or notes about anything else.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center) } } }
             items(history,key={ it.first().messageId }) { records ->
                 Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     records.forEach { raw -> val record=raw.copy(fact=MealRetention.redact(raw.fact))
@@ -73,6 +73,7 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
                 Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                     if(reply.transcript.isNotBlank()) ChatUser(reply.transcript)
                     Text(reply.message)
+                    if(reply.status=="CLARIFY" && state.reply?.id==reply.id) TextButton(onClick=model::resetLogClarification,enabled=!state.busy&&!state.pending) { Text("Start a new log instead") }
                     reply.entries.forEach { raw -> val record=raw.copy(fact=MealRetention.redact(raw.fact)); EntryLine(record,{ editing=record },{ deleting=record }) }
                     reply.insights?.let { InsightTable(it) }
                     if(reply.references.isNotEmpty()) ReferenceTable(reply.references)

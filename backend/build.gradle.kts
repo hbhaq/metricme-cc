@@ -3,6 +3,7 @@ kotlin { jvmToolchain(17) }
 application { mainClass.set("com.hbhaq.metricme.backend.ServerKt"); applicationDefaultJvmArgs = listOf("-Xmx256m", "-Djava.awt.headless=true") }
 dependencies {
     implementation(project(":contracts"))
+    implementation(project(":domain"))
     implementation(platform("io.ktor:ktor-bom:${libs.versions.ktor.get()}"))
     implementation("io.ktor:ktor-server-netty")
     implementation("io.ktor:ktor-server-content-negotiation")

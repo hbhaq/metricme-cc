@@ -11,7 +11,7 @@ val JOURNAL_CATEGORIES = listOf("FOOD", "MEDICATION", "SLEEP", "ACTIVITY", "WATE
 @Serializable data class JournalInput(
     val text:String="", val mediaBase64:String="", val mimeType:String="",
     val time:String, val zone:String, val consentVersion:String=JOURNAL_CONSENT,
-    val consented:Boolean=false, val clarificationContext:String="",val mode:String="JOURNAL"
+    val consented:Boolean=false, val clarificationContext:String="",val mode:String="JOURNAL",val profile:WellnessProfile?=null
 )
 @Serializable data class JournalFact(
     val category:String, val title:String, val note:String, val occurredAt:String,
@@ -23,13 +23,13 @@ val JOURNAL_CATEGORIES = listOf("FOOD", "MEDICATION", "SLEEP", "ACTIVITY", "WATE
 @Serializable data class JournalExtraction(
     val action:String, val transcript:String, val entries:List<JournalFact>,
     val clarification:String?, val fromDate:String?, val toDate:String?,val categoryFilter:String?=null,
-    val searchTerm:String?=null,val questionMode:String="SUMMARY"
+    val searchTerm:String?=null,val questionMode:String="SUMMARY",val continuation:String=""
 )
 @Serializable data class JournalRecord(val id:String,val messageId:String,val revision:Int,val fact:JournalFact)
 @Serializable data class JournalReply(
     val id:String, val status:String, val transcript:String="", val message:String="",
     val entries:List<JournalRecord> = emptyList(), val clarification:String?=null,
-    val insights:JournalInsights?=null,val references:List<JournalRecord> = emptyList()
+    val insights:JournalInsights?=null,val references:List<JournalRecord> = emptyList(),val continuation:String=""
 )
 @Serializable data class JournalPage(val entries:List<JournalRecord>,val nextBefore:String?=null)
 @Serializable data class JournalEdit(val revision:Int,val fact:JournalFact)
@@ -38,12 +38,14 @@ val JOURNAL_CATEGORIES = listOf("FOOD", "MEDICATION", "SLEEP", "ACTIVITY", "WATE
     val fromDate:String,val toDate:String,val daysInPeriod:Int,val daysLogged:Int,val totalEntries:Int,
     val categories:List<CategorySummary>,val foodCalories:Double?,val foodWithCalories:Int,
     val averageSleepMinutes:Double?,val sleepWithDuration:Int,val reportedSteps:Long?,val activityWithSteps:Int,
+    val dailyCalorieTarget:Int?=null,val targetEffectiveFrom:String?=null,
     val note:String="Based only on recorded entries. Missing days are unknown. Separate sleep reports may overlap. Associations do not establish causes."
 )
 
 object JournalRules {
     fun input(value:JournalInput) {
         require(value.consented && value.consentVersion==JOURNAL_CONSENT) { "Cloud journal consent required." }
+        value.profile?.let(WellnessRules::profile)
         require(value.mode in listOf("JOURNAL","INSIGHTS"))
         require(value.text.length<=10000 && value.clarificationContext.length<=12000)
         require(value.text.isNotBlank() || value.mediaBase64.isNotBlank())
@@ -68,6 +70,7 @@ object JournalRules {
         require(value.category=="ACTIVITY" || value.steps==null)
     }
     fun extraction(value:JournalExtraction) {
+        require(value.continuation.length<=8000)
         require(value.action in listOf("LOG","QUESTION")); require(value.transcript.length<=20000)
         require(value.categoryFilter==null || value.categoryFilter in JOURNAL_CATEGORIES)
         require(value.searchTerm==null || value.searchTerm.isNotBlank() && value.searchTerm.length<=100)
@@ -76,7 +79,7 @@ object JournalRules {
         require(value.clarification==null || value.clarification.isNotBlank() && value.clarification.length<=1000)
         if(value.clarification!=null) require(value.entries.isEmpty())
         if(value.action=="LOG") require(value.entries.isNotEmpty() || value.clarification!=null)
-        if(value.action=="QUESTION") { require(value.entries.isEmpty()); LocalDate.parse(requireNotNull(value.fromDate)); LocalDate.parse(requireNotNull(value.toDate)) }
+        if(value.action=="QUESTION") { require(value.entries.isEmpty()); if(value.clarification==null) { LocalDate.parse(requireNotNull(value.fromDate)); LocalDate.parse(requireNotNull(value.toDate)) } }
     }
 }
 
@@ -84,7 +87,7 @@ object MealRetention {
     fun reply(value:JournalReply,now:Instant=Instant.now()):JournalReply {
         val entries=value.entries.map { it.copy(fact=redact(it.fact,now)) }
         val references=value.references.map { it.copy(fact=redact(it.fact,now)) }
-        return if(entries!=value.entries || references!=value.references) value.copy(entries=entries,references=references,transcript="",message="Meal details older than three months are no longer available. Nutrition summaries remain.") else value
+        return if(entries!=value.entries || references!=value.references) value.copy(entries=entries,references=references,transcript="",continuation="",message="Meal details older than three months are no longer available. Nutrition summaries remain.") else value
     }
     fun cutoff(now:Instant=Instant.now()):Instant=now.atZone(java.time.ZoneOffset.UTC).minusMonths(3).toInstant()
     fun redact(f:JournalFact,now:Instant=Instant.now()):JournalFact {

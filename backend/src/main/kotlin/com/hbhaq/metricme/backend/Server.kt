@@ -70,6 +70,7 @@ fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,
         get("/health/ready") { if(store?.ready()!=true) call.respond(HttpStatusCode.ServiceUnavailable,ServiceInfo("database_unavailable",gateway!=null,config.authConfigured)) else call.respond(ServiceInfo("ready",gateway!=null,config.authConfigured)) }
         authenticate("oidc") {
             journalRoutes(journal,gateway,slots)
+            nutritionRoutes(gateway,slots)
             for((route,kind) in listOf("food-estimates" to "FOOD","activity-transcriptions" to "ACTIVITY")) post("/v1/$route") {
                 val user=call.principal<SubjectPrincipal>()!!.hash
                 val jobs=store?:throw ApiFailure("not_configured",503); val ai=gateway?:throw ApiFailure("not_configured",503)

@@ -37,22 +37,35 @@ fun Route.journalRoutes(store:JournalStore?,gateway:AiGateway?,slots:Semaphore) 
             val reply=try {
                 var extraction=ai.journal(request,media); JournalRules.extraction(extraction)
                 extraction=extraction.copy(entries=extraction.entries.map { it.copy(zone=request.zone) })
-                if(request.mode=="INSIGHTS" && extraction.action!="QUESTION") extraction=extraction.copy(action="LOG",entries=emptyList(),clarification="What would you like to know about your saved records? To log a new event, use Journal.")
+                if(request.mode=="INSIGHTS" && extraction.action!="QUESTION" && extraction.clarification==null) extraction=extraction.copy(action="LOG",entries=emptyList(),clarification="What would you like to know about your saved records? To log a new event, use Log.")
                 if(request.mimeType.startsWith("image/") && request.text.isBlank() && extraction.entries.any { it.category=="MEDICATION" }) {
                     extraction=extraction.copy(entries=emptyList(),clarification="What medicine and dose did you actually take, and when? A photo alone does not establish that.")
                 }
-                if(extraction.clarification!=null) JournalReply(id,"CLARIFY",extraction.transcript,extraction.clarification.orEmpty(),clarification=extraction.clarification)
+                if(request.mimeType.startsWith("image/") && request.text.isBlank() && extraction.clarification==null && extraction.entries.any { it.category=="FOOD" }) {
+                    val question="How much of each food or drink in the photo did you actually have? Please confirm portion sizes and any preparation, oil or sauce details you know."
+                    extraction=extraction.copy(entries=emptyList(),clarification=question,continuation=JournalQuality.continuation(request.clarificationContext,extraction,question))
+                }
+                JournalQuality.question(extraction)?.let { question ->
+                    extraction=extraction.copy(entries=emptyList(),clarification=question,continuation=JournalQuality.continuation(request.clarificationContext,extraction,question))
+                }
+                if(extraction.clarification!=null) JournalReply(id,"CLARIFY",extraction.transcript,extraction.clarification.orEmpty(),clarification=extraction.clarification,continuation=JournalQuality.continuation(request.clarificationContext,extraction,extraction.clarification.orEmpty()))
                 else if(extraction.action=="QUESTION") {
                     val zone=ZoneId.of(request.zone)
                     val from=LocalDate.parse(extraction.fromDate); val to=LocalDate.parse(extraction.toDate)
-                    val stats=withContext(Dispatchers.IO) { db.insights(owner,from,to,zone) }
+                    val baseStats=withContext(Dispatchers.IO) { db.insights(owner,from,to,zone) }
+                    val profile=request.profile
+                    val applicable=profile?.dailyCalorieTarget!=null && profile.targetEffectiveFrom?.let { LocalDate.parse(it)<=to }==true
+                    val stats=if(applicable) baseStats.copy(dailyCalorieTarget=profile?.dailyCalorieTarget,targetEffectiveFrom=profile?.targetEffectiveFrom) else baseStats
                     val rows=withContext(Dispatchers.IO) { db.search(owner,from,to,zone,extraction.categoryFilter,extraction.searchTerm,extraction.questionMode=="LATEST") }
                     val latest=extraction.questionMode=="LATEST"
                     val message=if(latest) rows.firstOrNull()?.let { "Your most recent matching record is ${it.fact.title}, on ${Instant.parse(it.fact.occurredAt).atZone(zone).format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy 'at' HH:mm"))}." }
                         ?:"No matching detailed record was found from $from to $to. Meal names and exact times are kept for three months; older nutrition summaries cannot answer item lookups."
                     else if(extraction.searchTerm!=null) "Found ${rows.size} matching saved records (up to 50), from $from to $to. Meal details are available for three months."
                     else "Period summary across all categories. "+insightText(stats)
-                    JournalReply(id,"ANSWER",extraction.transcript,message,insights=if(latest || extraction.searchTerm!=null) null else stats,references=rows)
+                    val explanation=ai.explain(request,stats,rows)
+                    val question=explanation?.clarification
+                    if(question!=null) JournalReply(id,"CLARIFY",extraction.transcript,question,clarification=question,continuation=explanation.continuation.ifBlank { extraction.continuation })
+                    else JournalReply(id,"ANSWER",extraction.transcript,explanation?.message?.takeIf(String::isNotBlank)?:message,insights=if(latest || extraction.searchTerm!=null) null else stats,references=rows,continuation=explanation?.continuation?.takeIf(String::isNotBlank)?:extraction.continuation)
                 } else JournalReply(id,"SAVED",extraction.transcript,"Saved ${extraction.entries.size} ${if(extraction.entries.size==1) "entry" else "entries"} to your journal.",extraction.entries.map { JournalRecord("",id,0,it) })
             } catch(e:CancellationException) {
                 withContext(NonCancellable+Dispatchers.IO) { db.finish(owner,id,JournalReply(id,"UNCERTAIN",message="Processing was interrupted. Check your journal before sending a new message.")) }; throw e
@@ -77,12 +90,14 @@ fun Route.journalRoutes(store:JournalStore?,gateway:AiGateway?,slots:Semaphore) 
 
 // 0.4.0 uses strict JSON parsing. New metadata is opt-in so that existing installs keep working.
 internal suspend inline fun <reified T:Any> ApplicationCall.journalRespond(value:T,status:HttpStatusCode=HttpStatusCode.OK) {
-    if(request.headers["X-MetricMe-Features"]=="meal-retention-v1") respond(status,value)
-    else respond(status,legacyJournalJson(WireJson.encodeToJsonElement(value)))
+    val feature=request.headers["X-MetricMe-Features"]
+    if(feature=="guided-journal-v1") respond(status,value)
+    else respond(status,compatibleJournalJson(WireJson.encodeToJsonElement(value),feature!="meal-retention-v1"))
 }
-@PublishedApi internal fun legacyJournalJson(value:JsonElement):JsonElement=when(value) {
-    is JsonObject -> JsonObject(value.filterKeys { it !in setOf("zone","detailsRetained") }.mapValues { legacyJournalJson(it.value) })
-    is JsonArray -> JsonArray(value.map(::legacyJournalJson))
+@PublishedApi internal fun legacyJournalJson(value:JsonElement):JsonElement=compatibleJournalJson(value,true)
+@PublishedApi internal fun compatibleJournalJson(value:JsonElement,legacy:Boolean):JsonElement=when(value) {
+    is JsonObject -> JsonObject(value.filterKeys { it !in (if(legacy) setOf("zone","detailsRetained","continuation","dailyCalorieTarget","targetEffectiveFrom") else setOf("continuation","dailyCalorieTarget","targetEffectiveFrom")) }.mapValues { compatibleJournalJson(it.value,legacy) })
+    is JsonArray -> JsonArray(value.map { compatibleJournalJson(it,legacy) })
     else -> value
 }
 

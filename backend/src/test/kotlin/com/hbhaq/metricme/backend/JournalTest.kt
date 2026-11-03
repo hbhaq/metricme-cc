@@ -105,7 +105,7 @@ class JournalTest {
                 calls++
                 return if(request.text=="unclear") JournalExtraction("LOG",request.text,emptyList(),"Which medication did you take?",null,null)
                 else if(request.text=="history") JournalExtraction("QUESTION",request.text,emptyList(),null,LocalDate.now().minusDays(29).toString(),LocalDate.now().toString())
-                else JournalExtraction("LOG",request.text,listOf(fact("FOOD"),fact("MEDICATION"),fact("SLEEP",420.0)),null,null,null)
+                else JournalExtraction("LOG",request.text,listOf(fact("FOOD").copy(quantity=1.0,unit="serving",calories=300.0,estimated=true),fact("MEDICATION").copy(dose="5 mg"),fact("SLEEP",420.0)),null,null,null)
             }
         },verify={ if(it=="alice") owner else if(it=="bob") "other-owner" else null },journal=store) }
         try {
@@ -123,6 +123,41 @@ class JournalTest {
             assertEquals(3,store.page(owner,null,null).entries.size)
             assertEquals(HttpStatusCode.BadRequest,send(UUID.randomUUID().toString(),"no consent",false).status)
             assertTrue(WireJson.decodeFromString<JournalPage>(client.get("/v1/journal/entries") { bearerAuth("bob") }.bodyAsText()).entries.isEmpty())
+        } finally { db.close() }
+    }
+    @Test fun foodAndInsightFollowUpsRemainUnsavedUntilMeaningfulAndClear()=testApplication {
+        val db=database(); val store=PostgresJournal(db.pool); val owner=UUID.randomUUID().toString()
+        val seen=mutableListOf<JournalInput>()
+        application { metricMe(ServerConfig(null,null,null,null,null),null,object:AiGateway {
+            override suspend fun estimate(kind:String,request:EstimateRequest,media:ByteArray):AiResult=error("unused")
+            override suspend fun journal(request:JournalInput,media:ByteArray):JournalExtraction {
+                seen+=request
+                return when(request.text) {
+                    "Burger" -> JournalExtraction("LOG",request.text,listOf(fact("FOOD")),null,null,null,continuation="Burger; portion unknown")
+                    "One large burger" -> JournalExtraction("LOG",request.text,listOf(fact("FOOD").copy(quantity=1.0,unit="large burger")),null,null,null,continuation="Burger; one large; preparation unknown")
+                    "Grilled beef with cheese" -> JournalExtraction("LOG",request.text,listOf(fact("FOOD").copy(title="Grilled beef cheeseburger",quantity=1.0,unit="large burger",calories=650.0,estimated=true)),null,null,null)
+                    "How am I doing?" -> JournalExtraction("QUESTION",request.text,emptyList(),"Which goal do you mean?",null,null,continuation="Question how doing; goal pending")
+                    "My sleep" -> JournalExtraction("QUESTION",request.text,emptyList(),"Which period?",null,null,continuation="Sleep assessment; period pending")
+                    else -> JournalExtraction("QUESTION",request.text,emptyList(),null,LocalDate.now().minusDays(7).toString(),LocalDate.now().toString(),continuation="Sleep last week")
+                }
+            }
+        },verify={ if(it=="alice") owner else null },journal=store) }
+        suspend fun send(text:String,context:String="",mode:String="JOURNAL"):JournalReply {
+            val response=client.post("/v1/journal/messages") { bearerAuth("alice"); header("Idempotency-Key",UUID.randomUUID().toString()); header("X-MetricMe-Features","guided-journal-v1"); contentType(ContentType.Application.Json); setBody(WireJson.encodeToString(JournalInput(text=text,time=Instant.now().minusSeconds(10).toString(),zone="UTC",consented=true,clarificationContext=context,mode=mode))) }
+            assertEquals(HttpStatusCode.OK,response.status)
+            return WireJson.decodeFromString(response.bodyAsText())
+        }
+        try {
+            val first=send("Burger"); assertEquals("CLARIFY",first.status); assertTrue(store.page(owner,null,null).entries.isEmpty())
+            val second=send("One large burger",first.continuation); assertEquals("CLARIFY",second.status); assertTrue(store.page(owner,null,null).entries.isEmpty())
+            assertEquals("SAVED",send("Grilled beef with cheese",second.continuation).status)
+            assertEquals(650.0,store.page(owner,null,null).entries.single().fact.calories!!,0.0)
+            val q=send("How am I doing?",mode="INSIGHTS"); assertEquals("CLARIFY",q.status)
+            val next=send("My sleep",q.continuation,"INSIGHTS"); assertEquals("CLARIFY",next.status)
+            assertEquals("ANSWER",send("Last week",next.continuation,"INSIGHTS").status)
+            assertEquals(1,store.page(owner,null,null).entries.size)
+            assertEquals("Burger; one large; preparation unknown",seen[2].clarificationContext)
+            assertEquals("Sleep assessment; period pending",seen.last().clarificationContext)
         } finally { db.close() }
     }
 }

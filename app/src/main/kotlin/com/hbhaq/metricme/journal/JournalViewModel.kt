@@ -37,8 +37,10 @@ interface JournalApi {
     @DELETE("v1/account/data") suspend fun clear(@Header("Authorization") token:String):Response<Unit>
 }
 private fun journalApi(backend:String):JournalApi=Retrofit.Builder().baseUrl(backend)
-    .client(OkHttpClient.Builder().addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("X-MetricMe-Features","meal-retention-v1").build()) }.connectTimeout(15,TimeUnit.SECONDS).readTimeout(180,TimeUnit.SECONDS).callTimeout(200,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build())
+    .client(OkHttpClient.Builder().addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("X-MetricMe-Features","guided-journal-v1").build()) }.connectTimeout(15,TimeUnit.SECONDS).readTimeout(180,TimeUnit.SECONDS).callTimeout(200,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build())
     .addConverterFactory(WireJson.asConverterFactory("application/json".toMediaType())).build().create(JournalApi::class.java)
+
+open class JournalApiFactory @Inject constructor() { open fun create(backend:String):JournalApi=journalApi(backend) }
 
 @Serializable data class PendingJournal(val id:String,val input:JournalInput)
 data class JournalState(
@@ -52,7 +54,7 @@ data class JournalState(
 
 @HiltViewModel class JournalViewModel @Inject constructor(
     @param:ApplicationContext private val context:Context,val sessions:SessionStore,
-    val media:MediaFiles,val recorder:LocalAudioRecorder,private val saved:SavedStateHandle
+    val media:MediaFiles,val recorder:LocalAudioRecorder,private val saved:SavedStateHandle,private val nutrition:NutritionRepository,private val apiFactory:JournalApiFactory
 ):ViewModel() {
     val state=MutableStateFlow(JournalState())
     val text=saved.getStateFlow("journalText","")
@@ -60,7 +62,6 @@ data class JournalState(
     fun typeQuestion(value:String) { if(value.length<=10000) saved["insightQuestion"]=value }
     private var active:String?=null
     private var request:Job?=null
-    private var clarification=""
     private val directory get()=File(context.filesDir,"journal-cache").apply { mkdirs() }
     private fun path(binding:String,name:String)=AtomicFile(File(directory,"$binding-$name.json"))
     private fun read(binding:String,name:String):String?=runCatching { path(binding,name).openRead().bufferedReader().use { it.readText() } }.getOrNull()
@@ -75,10 +76,11 @@ data class JournalState(
         val binding=identity()
         if(active!=binding) {
             request?.cancel(); recorder.discard(); state.value.attachment?.let(media::delete)
-            active=binding; saved["journalText"]=""; saved["insightQuestion"]=""; clarification=""; state.value=JournalState(signedIn=binding!=null)
+            active=binding; saved["journalText"]=""; saved["insightQuestion"]=""; state.value=JournalState(signedIn=binding!=null)
             if(binding!=null) {
                 val cache=withContext(Dispatchers.IO) { trimMealCache(context); read(binding,"entries")?.let { runCatching { WireJson.decodeFromString<JournalPage>(it) }.getOrNull() } }
-                if(active==binding) { state.value=state.value.copy(entries=cache?.entries.orEmpty(),before=cache?.nextBefore,pending=withContext(Dispatchers.IO) { read(binding,"pending")!=null },questionPending=withContext(Dispatchers.IO) { read(binding,"question")!=null },consentAccepted=withContext(Dispatchers.IO) { read(binding,"consent")==JOURNAL_CONSENT }); refresh() }
+                val contexts=withContext(Dispatchers.IO) { listOf("log-context","insight-context").map { name -> read(binding,name)?.let { runCatching { WireJson.decodeFromString<JournalReply>(it) }.getOrNull() } } }
+                if(active==binding) { state.value=state.value.copy(entries=cache?.entries.orEmpty(),before=cache?.nextBefore,reply=contexts[0],messages=listOfNotNull(contexts[0]),questions=listOfNotNull(contexts[1]),pending=withContext(Dispatchers.IO) { read(binding,"pending")!=null },questionPending=withContext(Dispatchers.IO) { read(binding,"question")!=null },consentAccepted=withContext(Dispatchers.IO) { read(binding,"consent")==JOURNAL_CONSENT }); refresh() }
             }
         }
     } } }
@@ -90,7 +92,7 @@ data class JournalState(
         val account=sessions.binding()?:return; val backend=sessions.settings().backend
         state.value=state.value.copy(busy=true,error=null)
         request=viewModelScope.launch {
-            try { val token=sessions.accessToken(account); ensureActive(); check(active==who); block(who,journalApi(backend),"Bearer $token") }
+            try { val token=sessions.accessToken(account); ensureActive(); check(active==who); block(who,apiFactory.create(backend),"Bearer $token") }
             catch(e:CancellationException) { throw e }
             catch(e:JournalException) { if(active==who) state.value=state.value.copy(error=e.message) }
             catch(_:Exception) { if(active==who) state.value=state.value.copy(error="Could not reach your journal. Your pending message is kept on this device. Check your connection and sign-in, then retry.") }
@@ -108,6 +110,8 @@ data class JournalState(
         state.value=state.value.copy(entries=entries.map { it.copy(fact=MealRetention.redact(it.fact)) },before=page.nextBefore)
         if(state.value.filter==null) withContext(Dispatchers.IO) { write(who,"entries",WireJson.encodeToString(JournalPage(entries.take(200),if(entries.size>200) null else page.nextBefore))) }
     }
+    private fun taskContext(who:String,name:String):String=read(who,name)?.let { raw -> runCatching { WireJson.decodeFromString<JournalReply>(raw) }.getOrNull()?.let { it.continuation.ifBlank { "Previous message: "+it.transcript+"\nAI question/answer: "+it.message } } }.orEmpty()
+    fun resetLogClarification() { val who=active?:return; if(state.value.busy || state.value.pending) return; viewModelScope.launch { withContext(Dispatchers.IO) { path(who,"log-context").delete() }; if(active==who) state.value=state.value.copy(reply=null) } }
     fun refresh()=launch { who,api,token -> load(who,api,token) }
     fun more()=launch { who,api,token -> load(who,api,token,true) }
     fun filter(category:String?) { if(state.value.busy) return; state.value=state.value.copy(filter=category); refresh() }
@@ -147,7 +151,7 @@ data class JournalState(
     fun revokeConsent() { val who=active?:return; viewModelScope.launch { withContext(Dispatchers.IO) { path(who,"consent").delete() }; if(active==who) state.value=state.value.copy(consentAccepted=false) } }
     fun clearCloudData()=launch { who,api,token ->
         if(!api.clear(token).isSuccessful) throw JournalException("Could not delete cloud data yet. Please retry.")
-        withContext(Dispatchers.IO) { path(who,"entries").delete(); path(who,"pending").delete(); path(who,"question").delete() }
+        withContext(Dispatchers.IO) { path(who,"entries").delete(); path(who,"pending").delete(); path(who,"question").delete(); path(who,"log-context").delete(); path(who,"insight-context").delete() }
         state.value=state.value.copy(entries=emptyList(),before=null,reply=null,insights=null,pending=false,questions=emptyList(),questionPending=false,messages=emptyList())
     }
     fun send()=launch { who,api,token ->
@@ -155,7 +159,7 @@ data class JournalState(
             val attachment=state.value.attachment
             if(text.value.isBlank() && attachment==null) throw JournalException("Say something, type a note or attach a photo first.")
             val bytes=attachment?.let { withContext(Dispatchers.IO) { media.owned(it).readBytes() } }
-            val input=JournalInput(text.value,bytes?.let { Base64.encodeToString(it,Base64.NO_WRAP) }.orEmpty(),state.value.attachmentMime,Instant.now().toString(),ZoneId.systemDefault().id,consented=true,clarificationContext=clarification)
+            val input=JournalInput(text.value,bytes?.let { Base64.encodeToString(it,Base64.NO_WRAP) }.orEmpty(),state.value.attachmentMime,Instant.now().toString(),ZoneId.systemDefault().id,consented=true,clarificationContext=withContext(Dispatchers.IO) { taskContext(who,"log-context") },profile=nutrition.sharedProfile())
             JournalRules.input(input)
             PendingJournal(UUID.randomUUID().toString(),input).also { withContext(Dispatchers.IO) { write(who,"pending",WireJson.encodeToString(it)) }; state.value=state.value.copy(pending=true) }
         }
@@ -163,7 +167,10 @@ data class JournalState(
         currentCoroutineContext().ensureActive(); if(active!=who) return@launch
         if(reply.status=="PROCESSING") throw JournalException("Still processing. Wait a moment, then tap Retry. The same message ID prevents duplicate entries.")
         withContext(Dispatchers.IO) { path(who,"pending").delete() }
-        clarification=if(reply.status=="CLARIFY") (pending.input.clarificationContext+"\nUser: ${reply.transcript}\nQuestion: ${reply.clarification}").take(12000) else ""
+        withContext(Dispatchers.IO) {
+            if(reply.status=="CLARIFY") write(who,"log-context",WireJson.encodeToString(reply))
+            else if(reply.status=="SAVED" || reply.status=="ANSWER") path(who,"log-context").delete()
+        }
         state.value=state.value.copy(reply=reply,pending=false,insights=reply.insights,messages=(state.value.messages+reply).distinctBy { it.id }.takeLast(30))
         if(reply.status in listOf("SAVED","CLARIFY","ANSWER","DELETED","EDITED")) { saved["journalText"]=""; removeAttachment() }
         load(who,api,token)
@@ -201,13 +208,14 @@ data class JournalState(
         val pending=withContext(Dispatchers.IO) { read(who,"question")?.let { WireJson.decodeFromString<PendingJournal>(it) } }?:run {
             if(questionText.value.isBlank()) throw JournalException("Type a question about your saved records.")
             val range=InsightPeriods.range(state.value.period,java.time.LocalDate.parse(state.value.insightDate))
-            val input=JournalInput(text=questionText.value,time=Instant.now().toString(),zone=ZoneId.systemDefault().id,consented=true,mode="INSIGHTS",clarificationContext="Selected period: ${range.first} to ${range.second}.\nPrevious question: ${state.value.questions.lastOrNull()?.transcript.orEmpty().take(10000)}")
+            val context=withContext(Dispatchers.IO) { taskContext(who,"insight-context") }
+            val input=JournalInput(text=questionText.value,time=Instant.now().toString(),zone=ZoneId.systemDefault().id,consented=true,mode="INSIGHTS",clarificationContext=("Selected period: "+range.first+" to "+range.second+".\n"+context).take(12000),profile=nutrition.sharedProfile())
             JournalRules.input(input)
             PendingJournal(UUID.randomUUID().toString(),input).also { withContext(Dispatchers.IO) { write(who,"question",WireJson.encodeToString(it)) }; state.value=state.value.copy(questionPending=true) }
         }
         val result=api.send(token,pending.id,pending.input).value()
         if(result.status=="PROCESSING") throw JournalException("Still checking your records. Tap Retry in a moment.")
-        withContext(Dispatchers.IO) { path(who,"question").delete() }
+        withContext(Dispatchers.IO) { path(who,"question").delete(); if(result.status in listOf("CLARIFY","ANSWER")) write(who,"insight-context",WireJson.encodeToString(result.copy(transcript=pending.input.text))) }
         if(active==who) { state.value=state.value.copy(questions=(state.value.questions+result.copy(transcript=pending.input.text)).takeLast(10),questionPending=false); saved["insightQuestion"]="" }
     }
     override fun onCleared() { recorder.stop(); super.onCleared() }

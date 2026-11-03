@@ -72,4 +72,29 @@ class OpenAiGatewayTest {
             assertTrue(seen[0].contains("gpt-4o-mini-transcribe")); assertTrue(seen[0].contains("filename=\"activity.wav\"")); assertTrue(seen[1].contains(transcript)); assertFalse(seen[1].contains("input_image"))
         } } finally { server.stop(0) }
     }
+    @Test fun nutritionInterviewUsesStrictStructuredOutputAndExplicitProfileContext() {
+        val assessment=NutritionAssessment(question="What is your usual activity?",continuation="Physiology explicitly confirmed; activity pending")
+        withServer(response(WireJson.encodeToString(assessment))) { origin,seen -> runBlocking {
+            val request=NutritionRequest(WellnessProfile(30,"Woman",165.0,65.0),"Help choose a target",consented=true)
+            assertEquals(assessment,OpenAiGateway("test-key",origin=origin).nutrition(request))
+            val payload=WireJson.parseToJsonElement(seen.single()).jsonObject
+            assertFalse(payload["store"]!!.jsonPrimitive.boolean)
+            assertTrue(payload["input"].toString().contains("165"))
+            assertTrue(payload["instructions"]!!.jsonPrimitive.content.contains("Never infer sex"))
+            assertTrue(payload["text"]!!.jsonObject["format"]!!.jsonObject["strict"]!!.jsonPrimitive.boolean)
+        } }
+    }
+    @Test fun insightInterpretationGetsOnlyRetrievedRecordsAndExplicitProfile() {
+        val answer=InsightInterpretation("Two meals have known calories; unlogged intake is unknown.",continuation="Daily nutrition summary")
+        withServer(response(WireJson.encodeToString(answer))) { origin,seen -> runBlocking {
+            val request=JournalInput(text="How was today?",time=java.time.Instant.now().toString(),zone="UTC",consented=true,mode="INSIGHTS",profile=WellnessProfile(30,"Woman",165.0,65.0,2000,"2026-01-01"))
+            val stats=JournalInsights("2026-11-04","2026-11-04",1,1,2,emptyList(),800.0,2,null,0,null,0)
+            val result=OpenAiGateway("test-key",origin=origin).explain(request,stats,emptyList())
+            assertEquals(answer,result)
+            val payload=WireJson.parseToJsonElement(seen.single()).jsonObject
+            assertTrue(payload["input"].toString().contains("2000"))
+            assertTrue(payload["instructions"]!!.jsonPrimitive.content.contains("missing logs are unknown"))
+            assertNull(payload["tools"]); assertFalse(payload["store"]!!.jsonPrimitive.boolean)
+        } }
+    }
 }
