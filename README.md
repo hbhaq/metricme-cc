@@ -2,7 +2,7 @@
 
 A calm, local-first native Android habit and health journal. Kotlin, Jetpack Compose Material 3, Hilt, Room, and a pure Kotlin domain module.
 
-**Current implementation: Stage 3.** Native offline logging and reminders now include private photo/audio drafts, editable AI review, consented offline uploads, OIDC sign-in and a Ktor/PostgreSQL backend. Verification is recorded in the stage report. Vercel hosts the API with Neon PostgreSQL and Auth0 configured. End-user Android sign-in and live media processing still require device verification. Analytics/coaching are Stage 4; final privacy/deletion and accessibility are Stage 5. Do not use this development build as medical advice.
+**Current implementation: Android 0.4.0 conversational journal.** Journal and AI capture share one screen for text, voice and photos. Clear statements become categorized, account-linked PostgreSQL records; ambiguous statements get clarification. Food estimates stay labelled and entries can be edited, undone or deleted. Insights query saved records and calculate descriptive summaries, rather than replaying a long chat. Offline manual logging remains available separately. See [the 0.4.0 behavior and verification notes](docs/ANDROID-0.4.0.md).
 
 <img src="docs/screenshots/today.png" width="320" alt="MetricMe Today screen captured from the real Android app on the CI emulator">
 <img src="docs/screenshots/ai-assist.png" width="320" alt="MetricMe native photo and audio draft screen captured during the actual emulator UI test">
@@ -26,17 +26,15 @@ Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Test reports: `domain/bu
 
 ## Try the app
 
-Open Today → Set up your profile, or choose “Explore with sample data.” Demo is read-only and uses in-memory fixtures instead of inserting sample records into the personal database. Exit demo to return to your records. Add kg/cm measurements from Setup → Profile & measurements; imperial display is optional. History supports correction and deletion. Manage target supports manual values or a maintenance estimate when inputs are available. All forms offer Cancel and preserve unfinished edits through recreation.
+[Download MetricMe 0.4.0](https://metricme-downloads.vercel.app/MetricMe-0.4.0.apk). It can update the downloadable 0.3.1 build in place; the earlier 0.3.0 debug build has an incompatible signing key.
 
-Use **Log** for food, activity/workouts, daily steps, sleep, habits/vitamins or medications. Optional nutrition/duration/step fields stay unknown when blank. Food nutrition describes the full entered quantity; portion consumed scales it. Workout lines use `exercise | sets | reps | load in kg`, with unknown fields left blank. Journal supports date navigation, corrections and confirmed deletion. Sleep belongs to the wake-up date; overlapping sessions require confirmation and do not count shared minutes twice.
+Open **Setup → Sign in with a code**, approve the code in your browser, and return to MetricMe. Public service settings are prefilled; Advanced connection settings support custom deployments. Never put an OpenAI key in Android.
 
-Open **Setup → Routines & reminders** to manage routines and enable optional notifications. Scheduled occurrences are tracked separately, as-needed use is recorded separately, and a missed alert does not imply a missed dose. Read [the reminder behavior and limitations](docs/REMINDERS.md).
+The **Journal** tab combines AI and history. Speak, type or attach a photo and tap Send. After first-use consent, clear events are saved automatically under Food, Medication, Sleep, Activity, Water, Mood, Measurement or Note. Ambiguous statements get a question. Each entry can be edited/deleted, and the latest saved batch can be undone.
 
-Use **Log → Photo or audio draft**, or the **AI** tab. Take/select a photo or record a short activity note, keep it locally, optionally add context, and explicitly consent before queuing an upload. Review/edit the result and confirm before it enters totals. Food batches save as independently editable entries in one transaction. Cancelled/deleted drafts cannot be populated by late results. Demo mode offers labeled local sample reviews without credentials or personal writes.
+**Insights** reads stored PostgreSQL records and shows date coverage, category counts and reported summaries. Ask a history question in Journal to retrieve a different date range/category. These features provide descriptive retrieval and aggregates, not causal conclusions or medical advice. See [the 0.4.0 behavior and verification report](docs/ANDROID-0.4.0.md).
 
-See [deployment and sign-in setup](docs/DEPLOYMENT.md) for the Vercel container service, Ktor API, PostgreSQL, server variables and public Android connection settings. No OpenAI key belongs in Android.
-
-Version 0.3.1 groups navigation into Today, Journal, AI and Setup. Open **Setup → Sign in with a code**, approve the displayed code in your browser, and return to the app. This avoids the Android redirect callback. MetricMe service values are prefilled; custom deployments can edit Advanced connection settings. Code sign-in uses the same Auth0 account, API audience and encrypted session storage. It does not send media until you consent to an upload.
+**Offline manual records** preserves the earlier local journal, Log forms and reminders. These Room records stay separate from the cloud journal and are not silently uploaded or included in cloud summaries. Profile, measurements, reminders and sample mode remain in Setup. Read [the reminder behavior and limitations](docs/REMINDERS.md). Older photo/audio drafts remain accessible for migration; they retain the original explicit review/confirmation flow.
 
 ## Rules that matter
 
@@ -47,11 +45,11 @@ Version 0.3.1 groups navigation into Today, Journal, AI and Setup. Open **Setup 
 - Measurements store instant and IANA zone. Latest instant wins, with a stable insertion sequence for ties. Backdated entries use local noon; a correction on the same date preserves its time. More than 30 days old is stale.
 - Writes use UUID operation receipts and transactions. A retry with a changed payload is rejected; a repeated identical save returns the previous result.
 
-## Privacy and scope
+## Legacy offline privacy and staged implementation
 
 Notifications and microphone access are contextual and optional. Photo Picker needs no blanket storage permission; external camera capture uses a scoped FileProvider. Media stays private until the user explicitly consents to an authenticated upload. Room uses the Android app sandbox and device file-based encryption; it is **not separately database-encrypted**. Session state is separately encrypted with an Android Keystore key. Cloud backup and device transfer are excluded. No OpenAI key is embedded. Pending media expires after seven days, confirmed media within 24 hours, and deleted media immediately; force-stopped cleanup resumes on the next permitted run. Complete account deletion controls arrive in Stage 5. Do not enter sensitive real data into an unreviewed development build.
 
-The Ktor API is live at [metricme-cc.vercel.app](https://metricme-cc.vercel.app) using the existing Java Docker image on Vercel. Liveness and Neon PostgreSQL readiness return 200, and protected routes reject unauthenticated requests with 401. The database uses Neon's Free plan. The server detects its OpenAI key and Auth0 configuration; device sign-in and live media processing remain unverified. Android UI ships as an APK. Railway previously rejected new provisioning with “Free plan resource provision limit exceeded,” and the user selected Vercel instead. No paid plan was enabled. The staged brief requires stopping after each stage until “continue.”
+The legacy Stage 3 verification below is historical; current 0.4.0 checks are recorded in [the conversational journal report](docs/ANDROID-0.4.0.md). The Ktor API is live at [metricme-cc.vercel.app](https://metricme-cc.vercel.app) using the existing Java Docker image on Vercel. Liveness and Neon PostgreSQL readiness return 200, and protected routes reject unauthenticated requests with 401. The database uses Neon's Free plan. The server detects its OpenAI key and Auth0 configuration; device sign-in and live media processing remain unverified. Android UI ships as an APK. Railway previously rejected new provisioning with “Free plan resource provision limit exceeded,” and the user selected Vercel instead. No paid plan was enabled. The staged brief requires stopping after each stage until “continue.”
 
 [Stage 3 Android checks and debug APK](https://github.com/hbhaq/metricme-cc/actions/runs/39152724736) · [Backend/PostgreSQL/container checks](https://github.com/hbhaq/metricme-cc/actions/runs/39152724727). **82 tests passed**: 29 domain, 9 shared contracts, 15 backend and 29 emulator tests, with no failures or skips. Lint: 0 errors, 9 warnings. The actual non-root deployment container passed its PostgreSQL/readiness/authentication smoke checks. APK version 0.3.0 is a development debug build; stable release/update signing remains Stage 5.
 
