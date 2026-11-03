@@ -8,8 +8,9 @@ import org.junit.Test
 class LoggingFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun begin(label: String) {
-        compose.waitUntil(15000) { compose.onAllNodesWithText("Offline manual journal").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Offline manual journal").performClick()
+        compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Offline manual records"))
+        compose.onNodeWithText("Offline manual records").performClick()
         try {
             compose.waitUntil(20000) { compose.onAllNodesWithText("Log", useUnmergedTree = false).fetchSemanticsNodes().isNotEmpty() }
         } catch (e: Throwable) {
