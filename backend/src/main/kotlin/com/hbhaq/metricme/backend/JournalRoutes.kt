@@ -2,6 +2,7 @@ package com.hbhaq.metricme.backend
 
 import com.hbhaq.metricme.contracts.*
 import io.ktor.http.*
+import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -11,6 +12,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.io.readByteArray
+import kotlinx.serialization.json.*
 import java.time.*
 import java.util.Base64
 import java.util.UUID
@@ -31,7 +33,7 @@ fun Route.journalRoutes(store:JournalStore?,gateway:AiGateway?,slots:Semaphore) 
             if(request.mimeType.startsWith("image/")) MediaValidation.image(media,request.mimeType)
             if(request.mimeType=="audio/wav") MediaValidation.audio(media,request.mimeType)
             val (owned,previous)=withContext(Dispatchers.IO) { db.begin(owner,id,sha256(bytes)) }
-            if(!owned) { call.respond(if(previous.status=="PROCESSING") HttpStatusCode.Accepted else HttpStatusCode.OK,previous); return@post }
+            if(!owned) { call.journalRespond(previous,if(previous.status=="PROCESSING") HttpStatusCode.Accepted else HttpStatusCode.OK); return@post }
             val reply=try {
                 var extraction=ai.journal(request,media); JournalRules.extraction(extraction)
                 extraction=extraction.copy(entries=extraction.entries.map { it.copy(zone=request.zone) })
@@ -55,22 +57,33 @@ fun Route.journalRoutes(store:JournalStore?,gateway:AiGateway?,slots:Semaphore) 
             } catch(e:CancellationException) {
                 withContext(NonCancellable+Dispatchers.IO) { db.finish(owner,id,JournalReply(id,"UNCERTAIN",message="Processing was interrupted. Check your journal before sending a new message.")) }; throw e
             } catch(_:Exception) { JournalReply(id,"FAILED",message="Could not understand this message. Nothing was journalled. Try again with a clearer description.") }
-            call.respond(withContext(Dispatchers.IO) { db.finish(owner,id,reply) })
+            call.journalRespond(withContext(Dispatchers.IO) { db.finish(owner,id,reply) })
         } finally { slots.release() }
     }
-    get("/v1/journal/entries") { val owner=call.principal<SubjectPrincipal>()!!.hash; val db=journalFor(owner); call.respond(withContext(Dispatchers.IO) { db.page(owner,call.request.queryParameters["before"],call.request.queryParameters["category"]) }) }
+    get("/v1/journal/entries") { val owner=call.principal<SubjectPrincipal>()!!.hash; val db=journalFor(owner); call.journalRespond(withContext(Dispatchers.IO) { db.page(owner,call.request.queryParameters["before"],call.request.queryParameters["category"]) }) }
     put("/v1/journal/entries/{id}") {
         val owner=call.principal<SubjectPrincipal>()!!.hash; val db=journalFor(owner)
         val edit=try { call.receive<JournalEdit>().also { JournalRules.fact(it.fact) } } catch(_:Exception) { throw ApiFailure("invalid_entry",400) }
-        call.respond(withContext(Dispatchers.IO) { db.edit(owner,call.parameters["id"].orEmpty().uuid(),edit) })
+        call.journalRespond(withContext(Dispatchers.IO) { db.edit(owner,call.parameters["id"].orEmpty().uuid(),edit) })
     }
     delete("/v1/journal/entries/{id}") { val owner=call.principal<SubjectPrincipal>()!!.hash; val db=journalFor(owner); withContext(Dispatchers.IO) { db.remove(owner,call.parameters["id"].orEmpty().uuid()) }; call.respond(HttpStatusCode.NoContent) }
     delete("/v1/journal/messages/{id}") { val owner=call.principal<SubjectPrincipal>()!!.hash; val db=journalFor(owner); withContext(Dispatchers.IO) { db.undo(owner,call.parameters["id"].orEmpty().uuid()) }; call.respond(HttpStatusCode.NoContent) }
     get("/v1/journal/insights") {
         val owner=call.principal<SubjectPrincipal>()!!.hash; val db=journalFor(owner)
         val dates=try { val zone=ZoneId.of(call.request.queryParameters["zone"]?:"UTC"); val to=call.request.queryParameters["to"]?.let(LocalDate::parse)?:LocalDate.now(zone); Triple(call.request.queryParameters["from"]?.let(LocalDate::parse)?:to.minusDays(29),to,zone) } catch(_:Exception) { throw ApiFailure("invalid_date_range",400) }
-        call.respond(withContext(Dispatchers.IO) { db.insights(owner,dates.first,dates.second,dates.third) })
+        call.journalRespond(withContext(Dispatchers.IO) { db.insights(owner,dates.first,dates.second,dates.third) })
     }
+}
+
+// 0.4.0 uses strict JSON parsing. New metadata is opt-in so that existing installs keep working.
+internal suspend inline fun <reified T:Any> ApplicationCall.journalRespond(value:T,status:HttpStatusCode=HttpStatusCode.OK) {
+    if(request.headers["X-MetricMe-Features"]=="meal-retention-v1") respond(status,value)
+    else respond(status,legacyJournalJson(WireJson.encodeToJsonElement(value)))
+}
+@PublishedApi internal fun legacyJournalJson(value:JsonElement):JsonElement=when(value) {
+    is JsonObject -> JsonObject(value.filterKeys { it !in setOf("zone","detailsRetained") }.mapValues { legacyJournalJson(it.value) })
+    is JsonArray -> JsonArray(value.map(::legacyJournalJson))
+    else -> value
 }
 
 fun insightText(s:JournalInsights):String=buildString {

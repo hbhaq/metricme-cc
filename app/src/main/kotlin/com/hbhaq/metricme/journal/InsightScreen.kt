@@ -47,7 +47,7 @@ import java.time.format.DateTimeFormatter
                 Text(s.note,style=MaterialTheme.typography.bodySmall)
             } } }
             if(state.questions.isEmpty()) item { Panel { Text("Ask your journal",style=MaterialTheme.typography.titleMedium); Text("“When did I last have a burger?”\n“How was my sleep last week?”\n“Show my medication entries this month.”"); Text("Meal names and exact times are kept for three months. Nutrition summaries remain.",style=MaterialTheme.typography.bodySmall) } }
-            items(state.questions,key={ it.id }) { reply ->
+            items(state.questions,key={ it.id }) { raw -> val reply=com.hbhaq.metricme.contracts.MealRetention.reply(raw)
                 Panel {
                     Text("You",style=MaterialTheme.typography.labelLarge)
                     Text(reply.transcript)

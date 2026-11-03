@@ -97,7 +97,7 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
                 Text("“I had eggs for breakfast, took my usual tablet, and slept seven hours.”")
                 Text("Clear facts become separate entries. Missing or ambiguous details get a short question.",style=MaterialTheme.typography.bodySmall)
             } }
-            items(state.entries,key={ it.id }) { entry -> Panel {
+            items(state.entries,key={ it.id }) { raw -> val entry=raw.copy(fact=MealRetention.redact(raw.fact)); Panel {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                     BadgeText(categoryLabel(entry.fact.category))
                     Text(runCatching { Instant.parse(entry.fact.occurredAt).atZone(ZoneId.of(entry.fact.zone)).format(DateTimeFormatter.ofPattern(if(entry.fact.detailsRetained) "d MMM · HH:mm" else "d MMM yyyy")) }.getOrDefault(entry.fact.occurredAt),style=MaterialTheme.typography.bodySmall)

@@ -37,7 +37,7 @@ interface JournalApi {
     @DELETE("v1/account/data") suspend fun clear(@Header("Authorization") token:String):Response<Unit>
 }
 private fun journalApi(backend:String):JournalApi=Retrofit.Builder().baseUrl(backend)
-    .client(OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(180,TimeUnit.SECONDS).callTimeout(200,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build())
+    .client(OkHttpClient.Builder().addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("X-MetricMe-Features","meal-retention-v1").build()) }.connectTimeout(15,TimeUnit.SECONDS).readTimeout(180,TimeUnit.SECONDS).callTimeout(200,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build())
     .addConverterFactory(WireJson.asConverterFactory("application/json".toMediaType())).build().create(JournalApi::class.java)
 
 @Serializable data class PendingJournal(val id:String,val input:JournalInput)

@@ -81,6 +81,11 @@ object JournalRules {
 }
 
 object MealRetention {
+    fun reply(value:JournalReply,now:Instant=Instant.now()):JournalReply {
+        val entries=value.entries.map { it.copy(fact=redact(it.fact,now)) }
+        val references=value.references.map { it.copy(fact=redact(it.fact,now)) }
+        return if(entries!=value.entries || references!=value.references) value.copy(entries=entries,references=references,transcript="",message="Meal details older than three months are no longer available. Nutrition summaries remain.") else value
+    }
     fun cutoff(now:Instant=Instant.now()):Instant=now.atZone(java.time.ZoneOffset.UTC).minusMonths(3).toInstant()
     fun redact(f:JournalFact,now:Instant=Instant.now()):JournalFact {
         if(f.category!="FOOD" || Instant.parse(f.occurredAt)>=cutoff(now)) return f

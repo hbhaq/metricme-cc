@@ -115,6 +115,8 @@ class JournalTest {
             val input=JournalInput(text="Breakfast, medicine, seven hours sleep",time=Instant.now().minusSeconds(10).toString(),zone="UTC",consented=true)
             repeat(2) { val r=client.post("/v1/journal/messages") { bearerAuth("alice"); header("Idempotency-Key",id); contentType(ContentType.Application.Json); setBody(WireJson.encodeToString(input)) }; assertEquals("SAVED",WireJson.decodeFromString<JournalReply>(r.bodyAsText()).status) }
             assertEquals(1,calls); assertEquals(3,store.page(owner,null,null).entries.size)
+            assertFalse(client.get("/v1/journal/entries") { bearerAuth("alice") }.bodyAsText().contains("detailsRetained"))
+            assertTrue(client.get("/v1/journal/entries") { bearerAuth("alice"); header("X-MetricMe-Features","meal-retention-v1") }.bodyAsText().contains("detailsRetained"))
             assertEquals("CLARIFY",WireJson.decodeFromString<JournalReply>(send(UUID.randomUUID().toString(),"unclear").bodyAsText()).status)
             assertEquals("ANSWER",WireJson.decodeFromString<JournalReply>(send(UUID.randomUUID().toString(),"history").bodyAsText()).status)
             assertEquals("CLARIFY",WireJson.decodeFromString<JournalReply>(send(UUID.randomUUID().toString(),"This would otherwise log events",mode="INSIGHTS").bodyAsText()).status)
