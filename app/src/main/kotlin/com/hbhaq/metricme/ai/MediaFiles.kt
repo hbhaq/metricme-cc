@@ -26,6 +26,81 @@ import javax.inject.Singleton
     fun owned(path:String):File { val file=File(path).canonicalFile; require(file.parentFile==directory.canonicalFile) { "Invalid private media reference." }; return file }
     fun delete(path:String?) { if(path!=null) runCatching { owned(path).delete() } }
     fun files()=directory.listFiles().orEmpty().toList()
+    suspend fun importAudio(uri:Uri):File=withContext(Dispatchers.IO) {
+        val raw=newFile("audio-input")
+        val output=newFile("wav")
+        val extractor=MediaExtractor()
+        var codec:MediaCodec?=null
+        try {
+            context.contentResolver.openInputStream(uri).use { input ->
+                requireNotNull(input)
+                raw.outputStream().use { out ->
+                    val buffer=ByteArray(8192); var total=0
+                    while(true) { val n=input.read(buffer); if(n<0) break; total+=n; require(total<=25_000_000); out.write(buffer,0,n) }
+                }
+            }
+            extractor.setDataSource(raw.path)
+            val track=(0 until extractor.trackCount).firstOrNull { extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/")==true } ?: error("No audio track")
+            extractor.selectTrack(track)
+            val format=extractor.getTrackFormat(track)
+            if(format.containsKey(MediaFormat.KEY_DURATION)) require(format.getLong(MediaFormat.KEY_DURATION)<=80_000_000)
+            val decoder=MediaCodec.createDecoderByType(requireNotNull(format.getString(MediaFormat.KEY_MIME)))
+            codec=decoder
+            decoder.configure(format,null,null,0); decoder.start()
+            var rate=format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            var channels=format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            var inputDone=false; var outputDone=false; var frame=0L; var written=0L; var count=0; var idle=0
+            val info=MediaCodec.BufferInfo()
+            RandomAccessFile(output,"rw").use { out ->
+                out.write(ByteArray(44))
+                while(!outputDone) {
+                    currentCoroutineContext().ensureActive()
+                    var progress=false
+                    if(!inputDone) {
+                        val index=decoder.dequeueInputBuffer(10_000)
+                        if(index>=0) {
+                            val buffer=requireNotNull(decoder.getInputBuffer(index)); buffer.clear()
+                            val n=extractor.readSampleData(buffer,0)
+                            if(n<0) { decoder.queueInputBuffer(index,0,0,0,MediaCodec.BUFFER_FLAG_END_OF_STREAM); inputDone=true }
+                            else { decoder.queueInputBuffer(index,0,n,extractor.sampleTime,0); extractor.advance() }
+                            progress=true
+                        }
+                    }
+                    val index=decoder.dequeueOutputBuffer(info,10_000)
+                    if(index==MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        val decoded=decoder.outputFormat
+                        rate=decoded.getInteger(MediaFormat.KEY_SAMPLE_RATE); channels=decoded.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                        require(rate in 8000..192000 && channels in 1..8)
+                        if(decoded.containsKey(MediaFormat.KEY_PCM_ENCODING)) require(decoded.getInteger(MediaFormat.KEY_PCM_ENCODING)==AudioFormat.ENCODING_PCM_16BIT)
+                        progress=true
+                    } else if(index>=0) {
+                        try {
+                            val buffer=requireNotNull(decoder.getOutputBuffer(index)).order(ByteOrder.LITTLE_ENDIAN)
+                            buffer.position(info.offset); buffer.limit(info.offset+info.size)
+                            val bytes=java.io.ByteArrayOutputStream()
+                            while(buffer.remaining()>=channels*2) {
+                                var sum=0; repeat(channels) { sum+=buffer.short.toInt() }
+                                val value=sum/channels
+                                val target=((frame+1)*16000/rate)
+                                while(written<target) { require(count+2<=80*32000); bytes.write(value and 255); bytes.write((value shr 8) and 255); written++; count+=2 }
+                                frame++
+                            }
+                            out.write(bytes.toByteArray())
+                            outputDone=info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                        } finally { decoder.releaseOutputBuffer(index,false) }
+                        progress=true
+                    }
+                    idle=if(progress) 0 else idle+1
+                    require(idle<500) { "Audio decoder timed out" }
+                }
+                require(count>=3200)
+                val header=ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply { put("RIFF".toByteArray()); putInt(count+36); put("WAVEfmt ".toByteArray()); putInt(16); putShort(1); putShort(1); putInt(16000); putInt(32000); putShort(2); putShort(16); put("data".toByteArray()); putInt(count) }
+                out.seek(0); out.write(header.array())
+            }
+            output
+        } catch(e:Exception) { output.delete(); throw e }
+        finally { runCatching { codec?.stop() }; codec?.release(); extractor.release(); raw.delete() }
+    }
     suspend fun importPhoto(uri:Uri):File=withContext(Dispatchers.IO) {
         val raw=newFile("input"); val output=newFile("jpg")
         try {

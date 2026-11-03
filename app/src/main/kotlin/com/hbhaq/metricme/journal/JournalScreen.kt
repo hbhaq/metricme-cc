@@ -32,114 +32,116 @@ import java.time.format.DateTimeFormatter
 
 fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::uppercaseChar)
 
-@Composable fun ConversationalJournal(model:JournalViewModel,setup:()->Unit,manual:()->Unit,legacy:()->Unit) {
+@Composable fun ConversationalJournal(model:JournalViewModel,setup:()->Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val text by model.text.collectAsStateWithLifecycle()
     val recording by model.recorder.state.collectAsStateWithLifecycle()
-    val context=LocalContext.current; val owner=LocalLifecycleOwner.current
+    val context=LocalContext.current
+    val owner=LocalLifecycleOwner.current
     var consent by rememberSaveable { mutableStateOf(false) }
+    var attachments by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<JournalRecord?>(null) }
     var deleting by remember { mutableStateOf<JournalRecord?>(null) }
+    val list=androidx.compose.foundation.lazy.rememberLazyListState()
     val photo=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let(model::attach) }
+    val audio=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(model::attachAudio) }
     val camera=rememberLauncherForActivityResult(ActivityResultContracts.TakePicture(),model::cameraResult)
     val microphone=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if(it) model.startRecording() }
     DisposableEffect(owner,model) {
         val observer=LifecycleEventObserver { _,event -> if(event==Lifecycle.Event.ON_STOP) model.recorder.stop() }
-        owner.lifecycle.addObserver(observer); onDispose { owner.lifecycle.removeObserver(observer); model.recorder.stop() }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer); model.recorder.stop() }
     }
     LaunchedEffect(recording.path) { if(recording.path!=null && !recording.active) model.keepRecording() }
+    val replies=state.messages.map(MealRetention::reply)
+    val liveIds=replies.map { it.id }.toSet()
+    val history=state.entries.filter { it.messageId !in liveIds }.groupBy { it.messageId }.values.toList().reversed()
+    LaunchedEffect(replies.size,state.busy) { if(list.layoutInfo.totalItemsCount>0) list.animateScrollToItem(list.layoutInfo.totalItemsCount-1) }
+    fun send() { if(!state.signedIn) setup() else if(state.consentAccepted) model.send() else consent=true }
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(20.dp,16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-            item { PageTitle("Your everyday memory","Journal","Speak, type or add a photo. MetricMe sorts it for you.") }
-            if(!state.signedIn) item { Panel {
-                Text("One journal, remembered",style=MaterialTheme.typography.titleLarge)
-                Text("Sign in to save categorized entries to your private cloud journal and retrieve them later.")
-                Button(onClick=setup,modifier=Modifier.fillMaxWidth()) { Text("Connect your journal") }
-                TextButton(onClick=manual) { Text("Open offline manual journal") }
-            } }
-            item { Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                Text("Your entries",style=MaterialTheme.typography.titleMedium)
-                Row { TextButton(onClick=model::refresh,enabled=state.signedIn&&!state.busy) { Text("Refresh") }; TextButton(onClick=model::insights,enabled=state.signedIn&&!state.busy) { Text("Insights") } }
-            } }
-            item { Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected=state.filter==null,onClick={ model.filter(null) },label={ Text("All") })
-                JOURNAL_CATEGORIES.forEach { category -> FilterChip(selected=state.filter==category,onClick={ model.filter(category) },label={ Text(categoryLabel(category)) }) }
-            } }
-            state.error?.let { message -> item { ErrorMessage(message,model::dismissError) } }
-            if(state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.reply?.let { raw -> val reply=MealRetention.reply(raw); item { Panel {
-                Text(if(reply.status=="SAVED") "Journalled" else if(reply.status=="CLARIFY") "A quick question" else "MetricMe",style=MaterialTheme.typography.titleMedium)
-                if(reply.transcript.isNotBlank()) Text("You: ${reply.transcript}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(reply.message)
-                if(reply.status=="CLARIFY") Text("Reply below. Nothing from that message has been saved yet.",style=MaterialTheme.typography.bodySmall)
-                if(reply.status=="SAVED") TextButton(onClick=model::undo,enabled=!state.busy) { Text("Undo these entries") }
-                reply.insights?.let { s ->
-                    Text("${s.fromDate} – ${s.toDate}",style=MaterialTheme.typography.labelLarge)
-                    Text("${s.totalEntries} entries · ${s.daysLogged}/${s.daysInPeriod} days logged")
-                    s.categories.forEach { Text("${categoryLabel(it.category)} · ${it.entries} entries on ${it.daysLogged} days",style=MaterialTheme.typography.bodyMedium) }
-                    s.averageSleepMinutes?.let { Text("Reported sleep: ${"%.1f".format(it/60)} h/day on logged days") }
-                    s.foodCalories?.let { Text("Logged food subtotal: ${it.toLong()} kcal · ${s.foodWithCalories} entries with calories") }
-                    s.reportedSteps?.let { Text("Reported activity steps: $it") }
-                    Text(s.note,style=MaterialTheme.typography.bodySmall)
-                }
-                if(reply.status=="ANSWER") {
-                    if(reply.references.isNotEmpty()) Text("Saved records for your question (up to 50)",style=MaterialTheme.typography.titleMedium)
-                    reply.references.forEach { row ->
-                        HorizontalDivider()
-                        Text("${categoryLabel(row.fact.category)} · ${row.fact.title}",style=MaterialTheme.typography.titleMedium)
-                        Text(row.fact.occurredAt,style=MaterialTheme.typography.bodySmall)
-                        Text(listOf(row.fact.note,factDetails(row.fact)).filter(String::isNotBlank).joinToString(" · "))
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(),state=list,contentPadding=PaddingValues(20.dp,12.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
+            if(state.before!=null) item { TextButton(onClick=model::more,enabled=!state.busy) { Text("Earlier messages") } }
+            if(history.isEmpty() && replies.isEmpty()) item { Box(Modifier.fillParentMaxHeight(.65f).fillMaxWidth(),contentAlignment=Alignment.Center) { Text("What's happening?",style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onSurfaceVariant) } }
+            items(history,key={ it.first().messageId }) { records ->
+                Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    records.forEach { raw -> val record=raw.copy(fact=MealRetention.redact(raw.fact))
+                        EntryLine(record,{ editing=record },{ deleting=record })
                     }
                 }
-            } } }
-            if(state.entries.isEmpty() && !state.busy && state.signedIn) item { Panel {
-                Text(if(state.filter==null) "Tell me about your day" else "No ${categoryLabel(state.filter!!).lowercase()} entries yet",style=MaterialTheme.typography.titleLarge)
-                Text("“I had eggs for breakfast, took my usual tablet, and slept seven hours.”")
-                Text("Clear facts become separate entries. Missing or ambiguous details get a short question.",style=MaterialTheme.typography.bodySmall)
-            } }
-            items(state.entries,key={ it.id }) { raw -> val entry=raw.copy(fact=MealRetention.redact(raw.fact)); Panel {
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                    BadgeText(categoryLabel(entry.fact.category))
-                    Text(runCatching { Instant.parse(entry.fact.occurredAt).atZone(ZoneId.of(entry.fact.zone)).format(DateTimeFormatter.ofPattern(if(entry.fact.detailsRetained) "d MMM · HH:mm" else "d MMM yyyy")) }.getOrDefault(entry.fact.occurredAt),style=MaterialTheme.typography.bodySmall)
+            }
+            items(replies,key={ it.id }) { reply ->
+                Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    if(reply.transcript.isNotBlank()) ChatUser(reply.transcript)
+                    Text(reply.message)
+                    reply.entries.forEach { raw -> val record=raw.copy(fact=MealRetention.redact(raw.fact)); EntryLine(record,{ editing=record },{ deleting=record }) }
+                    reply.insights?.let { InsightTable(it) }
+                    if(reply.references.isNotEmpty()) ReferenceTable(reply.references)
+                    if(reply.status=="SAVED" && state.reply?.id==reply.id) TextButton(onClick=model::undo,enabled=!state.busy) { Text("Undo") }
                 }
-                Text(entry.fact.title,style=MaterialTheme.typography.titleMedium)
-                if(entry.fact.note.isNotBlank()) Text(entry.fact.note)
-                factDetails(entry.fact).takeIf(String::isNotBlank)?.let { Text(it,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant) }
-                if(entry.fact.estimated) Text("AI estimate · editable",style=MaterialTheme.typography.labelSmall)
-                Row { if(entry.fact.detailsRetained) TextButton(onClick={ editing=entry },enabled=!state.busy) { Text("Edit") }; TextButton(onClick={ deleting=entry },enabled=!state.busy) { Text("Delete") } }
-            } }
-            if(state.before!=null) item { TextButton(onClick=model::more,enabled=!state.busy) { Text("Earlier entries") } }
-            item { Row { TextButton(onClick=manual) { Text("Offline manual records") }; TextButton(onClick=legacy) { Text("Older AI drafts") } } }
+            }
+            state.error?.let { item { ErrorMessage(it,model::dismissError) } }
+            if(state.busy) item { Text("Thinking…",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        Surface(shadowElevation=4.dp,color=MaterialTheme.colorScheme.surfaceContainerLow) {
-            Column(Modifier.fillMaxWidth().imePadding().padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                if(state.pending) {
-                    Text("Message kept for retry",style=MaterialTheme.typography.labelLarge)
-                    Row { Button(onClick=model::send,enabled=!state.busy) { Text("Retry same message") }; TextButton(onClick=model::discardPending,enabled=!state.busy) { Text("Cancel message") } }
+        Surface(color=MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxWidth().imePadding().padding(horizontal=12.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                if(state.pending) Row(verticalAlignment=Alignment.CenterVertically) {
+                    TextButton(onClick=model::send,enabled=!state.busy) { Text("Retry message") }
+                    TextButton(onClick=model::discardPending,enabled=!state.busy) { Text("Cancel") }
                 } else {
                     state.attachment?.let { Row(verticalAlignment=Alignment.CenterVertically) {
-                        Icon(if(state.attachmentMime=="audio/wav") Icons.Outlined.MicNone else Icons.Outlined.Image,null)
-                        Text(if(state.attachmentMime=="audio/wav") "Voice note attached" else "Photo attached",Modifier.weight(1f),style=MaterialTheme.typography.labelLarge)
-                        TextButton(onClick=model::removeAttachment,enabled=!state.busy) { Text("Remove") }
+                        Text(if(state.attachmentMime=="audio/wav") "Audio attached" else "Photo attached",Modifier.weight(1f),style=MaterialTheme.typography.labelLarge)
+                        IconButton(onClick=model::removeAttachment,enabled=!state.busy) { Icon(Icons.Outlined.Close,"Remove attachment") }
                     } }
-                    if(recording.active) Row(verticalAlignment=Alignment.CenterVertically) { Text("Listening · ${recording.seconds}s / 80s",Modifier.weight(1f)); Button(onClick=model.recorder::stop) { Text("Stop") }; TextButton(onClick=model.recorder::discard) { Text("Cancel") } }
-                    recording.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
-                    OutlinedTextField(text,model::type,placeholder={ Text("Tell MetricMe…") },modifier=Modifier.fillMaxWidth().heightIn(max=140.dp),enabled=!state.busy&&!recording.active,maxLines=4)
-                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                        IconButton(onClick={ try { camera.launch(model.cameraUri()) } catch(_:Exception) { model.cameraResult(false) } },enabled=!state.busy&&!recording.active) { Icon(Icons.Outlined.PhotoCamera,"Take a photo") }
-                        IconButton(onClick={ photo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },enabled=!state.busy&&!recording.active) { Icon(Icons.Outlined.Image,"Attach a photo") }
-                        IconButton(onClick={ if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) model.startRecording() else microphone.launch(Manifest.permission.RECORD_AUDIO) },enabled=!state.busy&&!recording.active) { Icon(Icons.Outlined.MicNone,"Record a voice note") }
-                        Spacer(Modifier.weight(1f))
-                        Button(onClick={ if(!state.signedIn) setup() else if(state.consentAccepted) model.send() else consent=true },enabled=!state.busy&&!recording.active&&(text.isNotBlank()||state.attachment!=null)) { Text("Send") }
+                    if(recording.active) Row(verticalAlignment=Alignment.CenterVertically) {
+                        Text("Recording · "+recording.seconds+"s",Modifier.weight(1f))
+                        TextButton(onClick=model.recorder::stop) { Text("Stop") }
+                        TextButton(onClick=model.recorder::discard) { Text("Cancel") }
                     }
-                    Text("Sending uses AI and saves clear entries to your cloud journal.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    recording.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
+                    Surface(shape=androidx.compose.foundation.shape.RoundedCornerShape(28.dp),color=MaterialTheme.colorScheme.surfaceContainer) {
+                        Column(Modifier.padding(6.dp)) {
+                            TextField(text,model::type,placeholder={ Text("Message MetricMe") },modifier=Modifier.fillMaxWidth().heightIn(max=140.dp),enabled=!state.busy&&!recording.active,maxLines=4,colors=TextFieldDefaults.colors(focusedContainerColor=androidx.compose.ui.graphics.Color.Transparent,unfocusedContainerColor=androidx.compose.ui.graphics.Color.Transparent,disabledContainerColor=androidx.compose.ui.graphics.Color.Transparent,focusedIndicatorColor=androidx.compose.ui.graphics.Color.Transparent,unfocusedIndicatorColor=androidx.compose.ui.graphics.Color.Transparent))
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                                Box {
+                                    IconButton(onClick={ attachments=true },enabled=!state.busy&&!recording.active) { Icon(Icons.Outlined.Add,"Add attachment") }
+                                    DropdownMenu(attachments,{ attachments=false }) {
+                                        DropdownMenuItem(text={ Text("Photo library") },leadingIcon={ Icon(Icons.Outlined.Image,null) },onClick={ attachments=false; photo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+                                        DropdownMenuItem(text={ Text("Camera") },leadingIcon={ Icon(Icons.Outlined.PhotoCamera,null) },onClick={ attachments=false; try { camera.launch(model.cameraUri()) } catch(_:Exception) { model.cameraResult(false) } })
+                                        DropdownMenuItem(text={ Text("Audio file") },leadingIcon={ Icon(Icons.Outlined.AudioFile,null) },onClick={ attachments=false; audio.launch(arrayOf("audio/*")) })
+                                    }
+                                }
+                                Spacer(Modifier.weight(1f))
+                                IconButton(onClick={ if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) model.startRecording() else microphone.launch(Manifest.permission.RECORD_AUDIO) },enabled=!state.busy&&!recording.active) { Icon(Icons.Outlined.MicNone,"Record a voice note") }
+                                FilledIconButton(onClick=::send,enabled=!state.busy&&!recording.active&&(text.isNotBlank()||state.attachment!=null)) { Icon(Icons.Outlined.ArrowUpward,"Send message") }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-    if(consent) AlertDialog(onDismissRequest={ consent=false },title={ Text("Enable your AI journal?") },text={ Text("Messages you send and attached media go to MetricMe and OpenAI. Clear events are saved automatically to your account's cloud journal until you delete them. Unclear details get a question. You can edit or undo entries. Raw media is not stored in your cloud journal. This applies to future messages you choose to send from this account; recording or attaching alone never uploads.") },confirmButton={ TextButton(onClick={ consent=false; model.acceptConsentAndSend() }) { Text("Enable & send") } },dismissButton={ TextButton(onClick={ consent=false }) { Text("Keep editing") } })
-    deleting?.let { entry -> AlertDialog(onDismissRequest={ deleting=null },title={ Text("Delete entry?") },text={ Text("Remove this entry from your cloud journal. It will no longer count toward insights.") },confirmButton={ TextButton(onClick={ deleting=null; model.delete(entry) }) { Text("Delete") } },dismissButton={ TextButton(onClick={ deleting=null }) { Text("Keep") } }) }
+    if(consent) AlertDialog(onDismissRequest={ consent=false },title={ Text("Use AI logging?") },text={ Text("Sent messages and attachments go to MetricMe and OpenAI. Recognized events are saved to your account. You can edit or delete them; raw media is not kept in your cloud journal.") },confirmButton={ TextButton(onClick={ consent=false; model.acceptConsentAndSend() }) { Text("Enable & send") } },dismissButton={ TextButton(onClick={ consent=false }) { Text("Cancel") } })
+    deleting?.let { entry -> AlertDialog(onDismissRequest={ deleting=null },title={ Text("Delete entry?") },confirmButton={ TextButton(onClick={ deleting=null; model.delete(entry) }) { Text("Delete") } },dismissButton={ TextButton(onClick={ deleting=null }) { Text("Cancel") } }) }
     editing?.let { entry -> JournalEditor(entry,state.busy,{ editing=null }) { fact -> model.edit(entry,fact) { editing=null } } }
+}
+
+@Composable private fun EntryLine(record:JournalRecord,edit:()->Unit,delete:()->Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+        Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+            Text(record.fact.title,style=MaterialTheme.typography.bodyLarge)
+            Text(categoryLabel(record.fact.category)+" · "+journalDate(record.fact),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(record.fact.note.isNotBlank()) Text(record.fact.note,style=MaterialTheme.typography.bodySmall)
+            factDetails(record.fact).takeIf(String::isNotBlank)?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
+        }
+        Box {
+            IconButton(onClick={ menu=true }) { Icon(Icons.Outlined.MoreHoriz,"Entry options") }
+            DropdownMenu(menu,{ menu=false }) {
+                if(record.fact.detailsRetained) DropdownMenuItem(text={ Text("Edit") },onClick={ menu=false; edit() })
+                DropdownMenuItem(text={ Text("Delete") },onClick={ menu=false; delete() })
+            }
+        }
+    }
 }
 
 private fun factDetails(f:JournalFact)=listOfNotNull(f.quantity?.let { "$it ${f.unit.orEmpty()}" },f.dose,f.durationMinutes?.let { "$it minutes" },f.steps?.let { "$it steps" },f.calories?.let { "$it kcal" }).joinToString(" · ")

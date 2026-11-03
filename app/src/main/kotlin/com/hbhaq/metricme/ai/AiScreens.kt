@@ -102,14 +102,14 @@ private fun statusLabel(status:String)=when(status) {
     var client by rememberSaveable { mutableStateOf(settings.clientId) }; var audience by rememberSaveable { mutableStateOf(settings.audience) }
     Panel {
         Icon(Icons.Outlined.AutoAwesome,null,tint=MaterialTheme.colorScheme.primary)
-        Text("Journal & AI account",style=MaterialTheme.typography.titleLarge)
+        Text("AI connection",style=MaterialTheme.typography.titleLarge)
         BadgeText(if(model.sessions.signedIn()) "Connected" else "Sign-in needed")
-        Text("Sign in for your cloud journal, photo and voice logging. Offline manual records stay on this device.")
+
         message?.let { Text(it) }
         if(settings.complete) {
             if(model.sessions.signedIn()) {
                 OutlinedButton(onClick=model.sessions::signOut) { Text("Sign out") }
-                TextButton(onClick=model::refresh) { Text("Resume pending uploads") }
+
             } else if(signingIn) {
                 code?.let { current ->
                     Text("1. Open sign-in and confirm this code.")
@@ -122,7 +122,7 @@ private fun statusLabel(status:String)=when(status) {
                 TextButton(onClick=model::cancelCodeSignIn) { Text("Cancel sign-in") }
             } else {
                 Button(onClick=model::startCodeSignIn,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)) { Text("Sign in with a code") }
-                Text("Approve in your browser, then return here. No redirect back to the app is required.",style=MaterialTheme.typography.bodySmall)
+
             }
         }
         TextButton(onClick={ expanded=!expanded },enabled=!signingIn) { Text(if(expanded) "Hide advanced settings" else "Advanced connection settings") }

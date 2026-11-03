@@ -21,7 +21,7 @@ class InsightPeriodsTest {
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("nav-insights").performClick()
         compose.onNodeWithText("Daily").assertExists(); compose.onNodeWithText("Weekly").assertExists(); compose.onNodeWithText("Monthly").assertExists()
-        compose.onNodeWithText("Ask about your history…").performTextInput("When did I last have a burger?")
+        compose.onNodeWithText("Ask about your history").performTextInput("When did I last have a burger?")
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("When did I last have a burger?").assertExists()
     }

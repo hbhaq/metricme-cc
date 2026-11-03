@@ -18,6 +18,8 @@ class AiFlowTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     private fun openAssist() {
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("nav-setup").performClick()
+        compose.onNodeWithText("Data settings").performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Older AI drafts"))
         compose.onNodeWithText("Older AI drafts").performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
@@ -49,11 +51,12 @@ class AiFlowTest {
         val before=graph.drafts().dao.all().map { it.id }.toSet()
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(hasText("Setup") and hasClickAction()).performClick()
+        compose.onNodeWithText("Data settings").performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Explore demo mode"))
         compose.onNodeWithContentDescription("Explore demo mode").performClick()
         try {
-            compose.onNode(hasText("Journal") and hasClickAction()).performClick()
-            compose.onNodeWithText("Explore sample AI reviews").performClick()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Older AI drafts"))
+            compose.onNodeWithText("Older AI drafts").performClick()
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Try sample food review"))
             compose.onNodeWithText("Try sample food review").performClick()
             compose.onNodeWithText("SAMPLE DATA · LOCAL EXAMPLE").assertExists()

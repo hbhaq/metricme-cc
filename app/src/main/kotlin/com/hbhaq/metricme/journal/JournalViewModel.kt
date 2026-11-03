@@ -46,7 +46,8 @@ data class JournalState(
     val error:String?=null,val reply:JournalReply?=null,val insights:JournalInsights?=null,
     val pending:Boolean=false,val signedIn:Boolean=false,val attachment:String?=null,val attachmentMime:String="",
     val filter:String?=null,val consentAccepted:Boolean=false,val period:String="month",val insightDate:String=java.time.LocalDate.now().toString(),
-    val questions:List<JournalReply> = emptyList(),val questionPending:Boolean=false
+    val questions:List<JournalReply> = emptyList(),val questionPending:Boolean=false,
+    val messages:List<JournalReply> = emptyList()
 )
 
 @HiltViewModel class JournalViewModel @Inject constructor(
@@ -118,6 +119,21 @@ data class JournalState(
             catch(_:Exception) { state.value=state.value.copy(error="Could not attach that photo. Choose a smaller image.") }
         }
     }
+    fun attachAudio(uri:Uri) {
+        if(state.value.busy || state.value.pending) return
+        val who=active
+        state.value=state.value.copy(busy=true,error=null)
+        request=viewModelScope.launch {
+            try {
+                val file=media.importAudio(uri)
+                if(active!=who) { media.delete(file.path); return@launch }
+                state.value.attachment?.let(media::delete)
+                state.value=state.value.copy(attachment=file.path,attachmentMime="audio/wav")
+            } catch(e:CancellationException) { throw e }
+            catch(_:Exception) { if(active==who) state.value=state.value.copy(error="Could not attach audio. Choose a supported audio file up to 80 seconds and 25 MB.") }
+            finally { if(active==who) state.value=state.value.copy(busy=false) }
+        }
+    }
     fun cameraUri():Uri { val file=media.newFile("jpg"); saved["journalCamera"]=file.path; return media.uri(file) }
     fun cameraResult(success:Boolean) { val path:String=saved["journalCamera"]?:return; saved["journalCamera"]=null; if(success) { attach(media.uri(media.owned(path))) }; /* Camera raw file is private and cleaned up by media maintenance. */ }
     fun startRecording() { if(state.value.pending || state.value.busy) return; try { recorder.start(80) } catch(_:Exception) { state.value=state.value.copy(error="Microphone unavailable. You can type instead.") } }
@@ -132,7 +148,7 @@ data class JournalState(
     fun clearCloudData()=launch { who,api,token ->
         if(!api.clear(token).isSuccessful) throw JournalException("Could not delete cloud data yet. Please retry.")
         withContext(Dispatchers.IO) { path(who,"entries").delete(); path(who,"pending").delete(); path(who,"question").delete() }
-        state.value=state.value.copy(entries=emptyList(),before=null,reply=null,insights=null,pending=false,questions=emptyList(),questionPending=false)
+        state.value=state.value.copy(entries=emptyList(),before=null,reply=null,insights=null,pending=false,questions=emptyList(),questionPending=false,messages=emptyList())
     }
     fun send()=launch { who,api,token ->
         val pending=withContext(Dispatchers.IO) { read(who,"pending")?.let { WireJson.decodeFromString<PendingJournal>(it) } }?:run {
@@ -148,7 +164,7 @@ data class JournalState(
         if(reply.status=="PROCESSING") throw JournalException("Still processing. Wait a moment, then tap Retry. The same message ID prevents duplicate entries.")
         withContext(Dispatchers.IO) { path(who,"pending").delete() }
         clarification=if(reply.status=="CLARIFY") (pending.input.clarificationContext+"\nUser: ${reply.transcript}\nQuestion: ${reply.clarification}").take(12000) else ""
-        state.value=state.value.copy(reply=reply,pending=false,insights=reply.insights)
+        state.value=state.value.copy(reply=reply,pending=false,insights=reply.insights,messages=(state.value.messages+reply).distinctBy { it.id }.takeLast(30))
         if(reply.status in listOf("SAVED","CLARIFY","ANSWER","DELETED","EDITED")) { saved["journalText"]=""; removeAttachment() }
         load(who,api,token)
     }
@@ -161,21 +177,21 @@ data class JournalState(
         val id=state.value.reply?.takeIf { it.status=="SAVED" }?.id?:return@launch
         if(!api.undo(token,id).isSuccessful) throw JournalException("Could not undo yet. Please retry.")
         withContext(Dispatchers.IO) { path(who,"entries").delete() }
-        state.value=state.value.copy(reply=null,questions=emptyList(),insights=null); load(who,api,token)
+        state.value=state.value.copy(reply=null,questions=emptyList(),insights=null,messages=emptyList()); load(who,api,token)
     }
     fun delete(entry:JournalRecord)=launch { who,api,token ->
         if(!api.delete(token,entry.id).isSuccessful) throw JournalException("Could not delete yet. Please retry.")
         withContext(Dispatchers.IO) { path(who,"entries").delete() }
-        state.value=state.value.copy(reply=null,insights=null,questions=emptyList())
+        state.value=state.value.copy(reply=null,insights=null,questions=emptyList(),messages=emptyList())
         load(who,api,token)
     }
-    fun edit(entry:JournalRecord,fact:JournalFact,done:()->Unit)=launch { who,api,token -> JournalRules.fact(fact); api.edit(token,entry.id,JournalEdit(entry.revision,fact)).value(); withContext(Dispatchers.IO) { path(who,"entries").delete() }; state.value=state.value.copy(reply=null,insights=null,questions=emptyList()); load(who,api,token); done() }
+    fun edit(entry:JournalRecord,fact:JournalFact,done:()->Unit)=launch { who,api,token -> JournalRules.fact(fact); api.edit(token,entry.id,JournalEdit(entry.revision,fact)).value(); withContext(Dispatchers.IO) { path(who,"entries").delete() }; state.value=state.value.copy(reply=null,insights=null,questions=emptyList(),messages=emptyList()); load(who,api,token); done() }
     fun insights()=launch { who,api,token ->
         val range=InsightPeriods.range(state.value.period,java.time.LocalDate.parse(state.value.insightDate))
         val data=api.insights(token,ZoneId.systemDefault().id,range.first.toString(),range.second.toString()).value()
         if(active==who) state.value=state.value.copy(insights=data)
     }
-    fun choosePeriod(period:String) { if(state.value.busy || period !in listOf("day","week","month")) return; state.value=state.value.copy(period=period,insights=null); insights() }
+    fun choosePeriod(period:String) { if(state.value.busy || period !in listOf("day","week","month")) return; state.value=state.value.copy(period=period,insights=null) }
     fun chooseInsightDate(date:java.time.LocalDate) { if(state.value.busy || date>java.time.LocalDate.now()) return; state.value=state.value.copy(insightDate=date.toString(),insights=null); insights() }
     fun shiftPeriod(direction:Long) {
         val date=java.time.LocalDate.parse(state.value.insightDate)

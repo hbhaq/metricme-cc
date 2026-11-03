@@ -2,7 +2,7 @@
 
 A calm, local-first native Android habit and health journal. Kotlin, Jetpack Compose Material 3, Hilt, Room, and a pure Kotlin domain module.
 
-**Current implementation: Android 0.4.1 conversational journal.** Journal and AI capture share one screen for text, voice and photos. Clear statements become categorized, account-linked PostgreSQL records; ambiguous statements get clarification. Food estimates stay labelled and entries can be edited, undone or deleted. Insights query saved records and calculate descriptive summaries, rather than replaying a long chat. Offline manual logging remains available separately. See [the 0.4.0 behavior and verification notes](docs/ANDROID-0.4.0.md).
+**Current implementation: Android 0.5.0 chat interface.** Journal and AI capture share one screen for text, voice and photos. Clear statements become categorized, account-linked PostgreSQL records; ambiguous statements get clarification. Food estimates stay labelled and entries can be edited, undone or deleted. Insights query saved records and calculate descriptive summaries, rather than replaying a long chat. Offline manual logging remains available separately. See [the 0.4.0 behavior and verification notes](docs/ANDROID-0.4.0.md).
 
 <img src="docs/screenshots/today.png" width="320" alt="MetricMe Today screen captured from the real Android app on the CI emulator">
 <img src="docs/screenshots/ai-assist.png" width="320" alt="MetricMe native photo and audio draft screen captured during the actual emulator UI test">
@@ -26,15 +26,15 @@ Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Test reports: `domain/bu
 
 ## Try the app
 
-[Download MetricMe 0.4.1](https://metricme-downloads.vercel.app/MetricMe-0.4.1.apk). It can update the downloadable 0.3.1 build in place; the earlier 0.3.0 debug build has an incompatible signing key.
+[Download MetricMe 0.5.0](https://metricme-downloads.vercel.app/MetricMe-0.5.0.apk). It can update the downloadable 0.3.1 build in place; the earlier 0.3.0 debug build has an incompatible signing key.
 
 Open **Setup → Sign in with a code**, approve the code in your browser, and return to MetricMe. Public service settings are prefilled; Advanced connection settings support custom deployments. Never put an OpenAI key in Android.
 
-The **Journal** tab combines AI and history. Speak, type or attach a photo and tap Send. After first-use consent, clear events are saved automatically under Food, Medication, Sleep, Activity, Water, Mood, Measurement or Note. Ambiguous statements get a question. Each entry can be edited/deleted, and the latest saved batch can be undone.
+The **Log** tab opens directly into a chat, with a microphone and an attachment menu for photos, camera and audio files. AI identifies the categories; there is no logging category picker. Speak, type or attach a photo and tap Send. After first-use consent, clear events are saved automatically under Food, Medication, Sleep, Activity, Water, Mood, Measurement or Note. Ambiguous statements get a question. Each entry can be edited/deleted, and the latest saved batch can be undone.
 
-**Insights** offers daily, weekly and monthly calendar views plus a question composer. Ask “When did I last have a burger?” to retrieve the latest matching saved record. Meal names, notes, portions and exact times are kept for three calendar months; nutrition-only records remain for longer-term summaries. See [0.4.1 retention and lookup behavior](docs/ANDROID-0.4.1.md). These features provide descriptive retrieval and aggregates, not causal conclusions or medical advice. See [the 0.4.0 behavior and verification report](docs/ANDROID-0.4.0.md).
+**Insights** is a separate database-backed chat with Daily, Weekly and Monthly summary shortcuts, table responses, and a question composer. Ask “When did I last have a burger?” to retrieve the latest matching saved record. Meal names, notes, portions and exact times are kept for three calendar months; nutrition-only records remain for longer-term summaries. See [0.4.1 retention and lookup behavior](docs/ANDROID-0.4.1.md). These features provide descriptive retrieval and aggregates, not causal conclusions or medical advice. See [the 0.4.0 behavior and verification report](docs/ANDROID-0.4.0.md).
 
-**Offline manual records** preserves the earlier local journal, Log forms and reminders. These Room records stay separate from the cloud journal and are not silently uploaded or included in cloud summaries. Profile, measurements, reminders and sample mode remain in Setup. Read [the reminder behavior and limitations](docs/REMINDERS.md). Older photo/audio drafts remain accessible for migration; they retain the original explicit review/confirmation flow.
+**Setup → Data settings → Offline records** preserves the earlier local journal, Log forms and reminders. These Room records stay separate from the cloud journal and are not silently uploaded or included in cloud summaries. Name, age (calculated from date of birth), gender, height and weight are in **You**. **Setup** contains AI sign-in and collapsed data settings; offline records, reminders, old AI drafts and sample mode are kept there. Read [the reminder behavior and limitations](docs/REMINDERS.md). Older photo/audio drafts remain accessible for migration; they retain the original explicit review/confirmation flow.
 
 ## Rules that matter
 

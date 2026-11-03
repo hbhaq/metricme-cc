@@ -9,14 +9,12 @@ class LoggingFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun begin(label: String) {
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Offline manual records"))
-        compose.onNodeWithText("Offline manual records").performClick()
-        try {
-            compose.waitUntil(20000) { compose.onAllNodesWithText("Log", useUnmergedTree = false).fetchSemanticsNodes().isNotEmpty() }
-        } catch (e: Throwable) {
-            throw AssertionError("Log entry point missing. UI:\n" + compose.onRoot().printToString(), e)
-        }
-        compose.onNodeWithText("Log").performClick(); compose.onNodeWithText(label, substring = false).performClick()
+        compose.onNodeWithTag("nav-setup").performClick()
+        compose.onNodeWithText("Data settings").performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Offline records"))
+        compose.onNodeWithText("Offline records").performClick()
+        compose.onNodeWithContentDescription("Add offline entry").performClick()
+        compose.onNodeWithText(label,substring=false).performClick()
     }
     @Test fun foodSaveEditAndDeleteWorkWithoutAnAccount() {
         begin("Food")

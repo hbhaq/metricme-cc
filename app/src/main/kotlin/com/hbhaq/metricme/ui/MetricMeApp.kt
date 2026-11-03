@@ -1,6 +1,5 @@
 package com.hbhaq.metricme.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,8 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.compose.*
 import com.hbhaq.metricme.domain.*
 import java.time.*
 import java.time.format.DateTimeFormatter
@@ -41,111 +38,85 @@ import kotlin.math.roundToInt
 
 private data class Destination(val route: String, val label: String, val icon: ImageVector)
 private val destinations = listOf(
-    Destination("journal", "Journal", Icons.AutoMirrored.Outlined.MenuBook),
+    Destination("journal", "Log", Icons.Outlined.ChatBubbleOutline),
     Destination("insights", "Insights", Icons.Outlined.BarChart),
+    Destination("you", "You", Icons.Outlined.PersonOutline),
     Destination("setup", "Setup", Icons.Outlined.Settings)
 )
 
 @Composable
-fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbhaq.metricme.ai.AiViewModel, journal:com.hbhaq.metricme.journal.JournalViewModel) {
+fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbhaq.metricme.ai.AiViewModel, journal: com.hbhaq.metricme.journal.JournalViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val form by model.formKind.collectAsStateWithLifecycle()
     val logs by logging.state.collectAsStateWithLifecycle()
     val logEditor by logging.editor.collectAsStateWithLifecycle()
+    var screen by rememberSaveable { mutableStateOf("journal") }
     var picker by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.demo) { logging.setDemo(state.demo) }
-    val nav = rememberNavController()
-    val entry by nav.currentBackStackEntryAsState()
-    val route = entry?.destination?.route ?: "journal"
-    Scaffold(
-        floatingActionButton = {
-            if (!state.demo && !state.loading && route in setOf("today", "offline")) FloatingActionButton(onClick = { picker = true }) {
-                Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Icon(Icons.Outlined.Add, null)
-                    Text("Log", style = MaterialTheme.typography.labelLarge)
-                }
-            }
-        },
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
-                destinations.forEach { destination ->
-                    NavigationBarItem(selected = route == destination.route || (route in setOf("you", "measurements", "routines") && destination.route == "setup"),
-                        modifier=Modifier.testTag("nav-${destination.route}"),
-                        onClick = { nav.navigate(destination.route) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } },
-                        icon = { Icon(destination.icon, contentDescription = null) }, label = { Text(destination.label) })
-                }
+    androidx.activity.compose.BackHandler(screen !in destinations.map { it.route }) { screen="setup" }
+    Scaffold(floatingActionButton={ if(screen=="offline" && !state.demo) FloatingActionButton(onClick={ picker=true }) { Icon(Icons.Outlined.Add,"Add offline entry") } },bottomBar = {
+        NavigationBar(containerColor=MaterialTheme.colorScheme.background, tonalElevation=0.dp) {
+            destinations.forEach { destination ->
+                NavigationBarItem(selected=screen==destination.route,
+                    modifier=Modifier.testTag("nav-"+destination.route),
+                    onClick={ screen=destination.route },
+                    icon={ Icon(destination.icon,null) },label={ Text(destination.label) })
             }
         }
-    ) { padding ->
+    }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-                    Text("m", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge)
-                }
-                Spacer(Modifier.width(9.dp)); Text("metricme", style = MaterialTheme.typography.titleLarge)
+            Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                Text(destinations.firstOrNull { it.route==screen }?.label ?: "Saved records",style=MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.weight(1f))
-                BadgeText(if (state.demo) "SAMPLE DATA" else if(route in setOf("journal","insights")) "PRIVATE CLOUD" else "ON DEVICE", if (state.demo) Icons.Outlined.Science else Icons.Outlined.Lock)
+                if(state.demo) TextButton(onClick={ model.setDemo(false) }) { Text("Exit demo") }
             }
-            if (state.demo) {
-                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(start = 24.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sample data · explore freely", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                    TextButton(onClick = { model.setDemo(false) }) { Text("Exit demo") }
-                }
-            }
-            if (state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.semantics { contentDescription = "Loading local profile" }) }
-            else {
-                if (state.error != null && form.isEmpty()) ErrorMessage(state.error!!, model::clearError)
-                NavHost(navController = nav, startDestination = "journal", modifier = Modifier.weight(1f)) {
-                    composable("today") { if (state.demo) TodayScreen(state, model.today(), model::openProfile, { nav.navigate("you") }, { model.setDemo(true) }) else ManualTodayScreen(state, model, logs, logging, { nav.navigate("routines") }) }
-                    composable("journal") { if(state.demo) {
-                        Column { TextButton(onClick={ nav.navigate("assist") }) { Text("Explore sample AI reviews") }; JournalScreen(state,{ nav.navigate("measurements") }) }
-                    } else com.hbhaq.metricme.journal.ConversationalJournal(journal,{ nav.navigate("setup") },{ nav.navigate("offline") },{ nav.navigate("assist") }) }
-                    composable("offline") { ManualJournalScreen(logs,logging,{ nav.navigate("measurements") }) }
-                    composable("insights") { com.hbhaq.metricme.journal.CloudInsightsScreen(journal,state.demo) { nav.navigate("setup") } }
-                    composable("setup") { SetupScreen(state, model, ai, journal, { nav.navigate("you") }, { nav.navigate("routines") }) }
-                    composable("you") { YouScreen(state, model, { nav.navigate("measurements") }, { nav.navigate("routines") }, { nav.navigate("assist") }) }
-                    composable("measurements") { MeasurementScreen(state, model) { nav.popBackStack() } }
-                    composable("routines") { RoutinesScreen(logs, logging, state.demo) { nav.popBackStack() } }
-                    composable("assist") { com.hbhaq.metricme.ai.AiScreen(ai, state.demo, { nav.popBackStack() }, { nav.navigate("setup") }) { kind -> nav.popBackStack(); logging.openLog(LogKind.valueOf(kind)) } }
+            if(state.demo) Text("SAMPLE DATA",Modifier.padding(horizontal=20.dp),style=MaterialTheme.typography.labelSmall)
+            if(state.loading) Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) { CircularProgressIndicator() }
+            else Box(Modifier.weight(1f)) {
+                when(screen) {
+                    "journal" -> com.hbhaq.metricme.journal.ConversationalJournal(journal, { screen="setup" })
+                    "insights" -> com.hbhaq.metricme.journal.CloudInsightsScreen(journal,state.demo) { screen="setup" }
+                    "you" -> YouScreen(state,model,{ screen="measurements" })
+                    "setup" -> SetupScreen(state,model,ai,journal,{ screen=it })
+                    "measurements" -> MeasurementScreen(state,model) { screen="you" }
+                    "offline" -> ManualJournalScreen(logs,logging,{ screen="measurements" })
+                    "routines" -> RoutinesScreen(logs,logging,state.demo) { screen="setup" }
+                    "assist" -> com.hbhaq.metricme.ai.AiScreen(ai,state.demo,{ screen="setup" },{ screen="setup" }) { kind -> logging.openLog(LogKind.valueOf(kind)) }
                 }
             }
         }
     }
-    if (form.isNotEmpty()) FormDialog(model, state, form)
-    if (logEditor.isNotEmpty() && !state.demo) LoggingEditor(logging, logs, logEditor)
-    if (picker && !state.demo) LogPicker(onDismiss = { picker = false }, onLog = { picker = false; logging.openLog(it) }, onRoutine = { picker = false; logging.openRoutine(it) }, onAi = { picker = false; nav.navigate("assist") })
+    if(picker) LogPicker({ picker=false },{ picker=false; logging.openLog(it) },{ picker=false; logging.openRoutine(it) },{ picker=false; screen="assist" })
+    if(form.isNotEmpty()) FormDialog(model,state,form)
+    if(logEditor.isNotEmpty() && !state.demo) LoggingEditor(logging,logs,logEditor)
 }
 
-@Composable private fun SetupScreen(state:AppState,model:MetricMeViewModel,ai:com.hbhaq.metricme.ai.AiViewModel,journal:com.hbhaq.metricme.journal.JournalViewModel,profile:()->Unit,routines:()->Unit) {
+@Composable private fun SetupScreen(state:AppState,model:MetricMeViewModel,ai:com.hbhaq.metricme.ai.AiViewModel,journal:com.hbhaq.metricme.journal.JournalViewModel,open:(String)->Unit) {
     val error by ai.error.collectAsStateWithLifecycle()
     val cloud by journal.state.collectAsStateWithLifecycle()
+    var more by rememberSaveable { mutableStateOf(false) }
     var deleteCloud by rememberSaveable { mutableStateOf(false) }
-    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
-        item { PageTitle("Preferences", "Setup", "Your account, profile and reminders in one place.") }
+    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         error?.let { item { ErrorMessage(it) { ai.error.value=null } } }
-        if(!state.demo) item { com.hbhaq.metricme.ai.AiSetupPanel(ai) }
-        item { Panel {
-            Text("Your profile",style=MaterialTheme.typography.titleLarge)
-            Text(state.profile?.name?.takeIf(String::isNotBlank)?:"Add your details and optional daily targets.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick=profile,modifier=Modifier.fillMaxWidth()) { Icon(Icons.Outlined.PersonOutline,null); Spacer(Modifier.width(8.dp)); Text("Profile & measurements") }
-            OutlinedButton(onClick=routines,enabled=!state.demo,modifier=Modifier.fillMaxWidth()) { Icon(Icons.Outlined.NotificationsNone,null); Spacer(Modifier.width(8.dp)); Text("Routines & reminders") }
-        } }
-        item { Panel {
-            Row(verticalAlignment=Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text("Sample mode",style=MaterialTheme.typography.titleMedium); Text("Explore without changing your records.",style=MaterialTheme.typography.bodySmall) }
-                Switch(checked=state.demo,onCheckedChange=model::setDemo,modifier=Modifier.semantics { contentDescription="Explore demo mode" })
+        item { com.hbhaq.metricme.ai.AiSetupPanel(ai) }
+        item { TextButton(onClick={ more=!more }) { Text(if(more) "Close data settings" else "Data settings") } }
+        if(more) {
+            item { Text("Meal details: 3 months. Nutrition summaries stay. Your profile stays on this device.",style=MaterialTheme.typography.bodySmall) }
+            item { TextButton(onClick={ open("offline") }) { Text("Offline records") } }
+            item { TextButton(onClick={ open("assist") }) { Text("Older AI drafts") } }
+            item { TextButton(onClick={ open("routines") }) { Text("Reminders") } }
+            item { Row(verticalAlignment=Alignment.CenterVertically) {
+                Text("Sample mode",Modifier.weight(1f))
+                Switch(state.demo,model::setDemo,modifier=Modifier.semantics { contentDescription="Explore demo mode" })
+            } }
+            if(cloud.signedIn) {
+                if(cloud.consentAccepted) item { TextButton(onClick=journal::revokeConsent,enabled=!cloud.busy) { Text("Reset AI consent") } }
+                item { TextButton(onClick={ deleteCloud=true },enabled=!cloud.busy) { Text("Delete cloud data",color=MaterialTheme.colorScheme.error) } }
             }
-        } }
-        item { PrivacyNote() }
-        if(!state.demo && cloud.signedIn) item { Panel {
-            Text("Cloud journal privacy",style=MaterialTheme.typography.titleMedium)
-            Text("Meal details are kept for three months; nutrition summaries remain until deleted. Other categorized records remain until deleted. Raw media is not kept in the cloud journal. Offline manual records remain separate.",style=MaterialTheme.typography.bodySmall)
-            if(cloud.consentAccepted) TextButton(onClick=journal::revokeConsent,enabled=!cloud.busy) { Text("Ask for consent before the next message") }
-            TextButton(onClick={ deleteCloud=true },enabled=!cloud.busy) { Text("Delete cloud journal & AI results",color=MaterialTheme.colorScheme.error) }
-            cloud.error?.let { ErrorMessage(it,journal::dismissError) }
-        } }
+            cloud.error?.let { item { ErrorMessage(it,journal::dismissError) } }
+        }
     }
-    if(deleteCloud) AlertDialog(onDismissRequest={ deleteCloud=false },title={ Text("Delete cloud journal and AI results?") },text={ Text("This permanently deletes all saved cloud journal entries and temporary AI results for this account. Offline manual records on this device remain. This cannot be undone.") },confirmButton={ TextButton(onClick={ deleteCloud=false; journal.clearCloudData() }) { Text("Delete cloud data") } },dismissButton={ TextButton(onClick={ deleteCloud=false }) { Text("Keep data") } })
+    if(deleteCloud) AlertDialog(onDismissRequest={ deleteCloud=false },title={ Text("Delete cloud data?") },text={ Text("All cloud entries and AI results for this account will be permanently deleted. This cannot be undone.") },confirmButton={ TextButton(onClick={ deleteCloud=false; journal.clearCloudData() }) { Text("Delete") } },dismissButton={ TextButton(onClick={ deleteCloud=false }) { Text("Cancel") } })
 }
 
 @Composable internal fun PageTitle(eyebrow: String, title: String, subtitle: String? = null) {
@@ -173,60 +144,6 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     }
 }
 
-@Composable private fun TodayScreen(state: AppState, date: LocalDate, setup: () -> Unit, profile: () -> Unit, demo: () -> Unit) {
-    val locale = LocalLocale.current.platformLocale
-    val target = HealthRules.historicalTarget(state.targets, date)
-    val greeting = state.profile?.name?.takeIf { it.isNotBlank() }?.let { "A little better, $it." } ?: "Small steps. More you."
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        item { PageTitle(date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", locale)), greeting, "A calm place to build your everyday habits.") }
-        item {
-            Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.primary) {
-                Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Spa, null, Modifier.size(22.dp))
-                        Spacer(Modifier.width(8.dp)); Text("Your daily nourishment", style = MaterialTheme.typography.titleMedium)
-                    }
-                    if (state.demo) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                            val track = MaterialTheme.colorScheme.onPrimary.copy(alpha = .2f)
-                            val ink = MaterialTheme.colorScheme.onPrimary
-                            Box(Modifier.size(94.dp).semantics { contentDescription = "Sample intake 1,680 calories; illustrative progress only" }, contentAlignment = Alignment.Center) {
-                                Canvas(Modifier.fillMaxSize()) { drawArc(track, -90f, 360f, false, style = Stroke(8.dp.toPx(), cap = StrokeCap.Round)); drawArc(ink, -90f, 260f, false, style = Stroke(8.dp.toPx(), cap = StrokeCap.Round)) }
-                                Icon(Icons.Outlined.Restaurant, null, Modifier.size(28.dp))
-                            }
-                            Column { Text("1,680", style = MaterialTheme.typography.displaySmall); Text("kcal · sample intake", style = MaterialTheme.typography.bodyMedium) }
-                        }
-                    } else {
-                        Text("A fresh page for today", style = MaterialTheme.typography.headlineMedium)
-                        Text("Food is not logged yet. Missing entries never count as zero.", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimary.copy(alpha = .2f))
-                    Text(target?.calories?.let { "${it.roundToInt()} kcal ${if (target.manual) "manual target" else "estimated maintenance"}" } ?: "No calorie target set", style = MaterialTheme.typography.labelLarge)
-                    Text(if (state.demo) "Sample data · not a record of your day" else "Manual food logging arrives in Stage 2.", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MiniMetric("Movement", if (state.demo) "6,240" else "—", if (state.demo) "steps · sample" else "Steps not logged", Icons.AutoMirrored.Outlined.DirectionsWalk, Modifier.weight(1f))
-                MiniMetric("Rest", if (state.demo) "7h 25m" else "—", if (state.demo) "sleep · sample" else "Sleep not logged", Icons.Outlined.Bedtime, Modifier.weight(1f))
-            }
-        }
-        item {
-            SectionLabel("Make room for yourself", "START HERE")
-            Spacer(Modifier.height(12.dp))
-            Panel {
-                Icon(Icons.Outlined.Tune, null, tint = MaterialTheme.colorScheme.secondary)
-                Text(if (state.profile == null) "Your routine starts with you" else "Your profile, at your pace", style = MaterialTheme.typography.titleLarge)
-                Text("Add what you are comfortable sharing. Logging will work even without calorie estimates.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FilledTonalButton(onClick = if (state.demo) profile else setup, modifier = Modifier.fillMaxWidth()) { Text(if (state.demo) "Explore sample profile" else if (state.profile == null) "Set up your profile" else "Edit your profile"); Spacer(Modifier.width(8.dp)); Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(18.dp)) }
-            }
-        }
-        if (!state.demo) item { OutlinedButton(onClick = demo, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Science, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Explore with sample data") } }
-        item { Text("Built around progress, not perfection.", Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-    }
-}
-
 @Composable internal fun MiniMetric(title: String, value: String, detail: String, icon: ImageVector, modifier: Modifier) {
     Panel(modifier) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.secondary)
@@ -236,71 +153,29 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     }
 }
 
-@Composable private fun JournalScreen(state: AppState, measurements: () -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        item { PageTitle("Your record", "Every day tells a story.", "Read-only sample history. Exit demo to log your own food, sleep, activity and routines.") }
+@Composable private fun YouScreen(state:AppState,model:MetricMeViewModel,history:()->Unit) {
+    val profile=state.profile
+    val locale=LocalLocale.current.platformLocale
+    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         item { Panel {
-            Icon(Icons.AutoMirrored.Outlined.MenuBook, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp))
-            Text("A place for the little things", style = MaterialTheme.typography.titleLarge)
-            Text(if (state.measurements.isEmpty()) "Start with a height or weight entry. You can correct it whenever you need." else "${state.measurements.size} ${if (state.demo) "sample " else ""}measurements in your history.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FilledTonalButton(onClick = measurements) { Text("Open measurement history") }
+            Text(profile?.name?.takeIf(String::isNotBlank) ?: "Your name",style=MaterialTheme.typography.titleLarge)
+            profile?.birthDate?.let { Text(java.time.Period.between(it,model.today()).years.toString()+" years") }
+            profile?.genderIdentity?.takeIf(String::isNotBlank)?.let { Text(it) }
+            TextButton(onClick=model::openProfile,enabled=!state.demo) { Text(if(profile==null) "Add details" else "Edit details") }
         } }
-        item { PrivacyNote() }
-    }
-}
-
-@Composable private fun InsightsScreen() {
-    LazyColumn(contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        item { PageTitle("The bigger picture", "Patterns, with perspective.", "Insights and coaching arrive in Stage 4, once logging is in place.") }
-        item { Panel {
-            Icon(Icons.Outlined.BarChart, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.secondary)
-            Text("Your data deserves context", style = MaterialTheme.typography.titleLarge)
-            Text("Weekly averages will include logging coverage. Sparse data will never be presented as a trend.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            BadgeText("Not enough data yet")
-        } }
-    }
-}
-
-@Composable private fun YouScreen(state: AppState, model: MetricMeViewModel, history: () -> Unit, routines: () -> Unit, assist: () -> Unit) {
-    val locale = LocalLocale.current.platformLocale
-    val target = HealthRules.historicalTarget(state.targets, model.today())
-    LazyColumn(contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        item { PageTitle("Setup", "Profile & measurements", "Your details and targets stay on this device.") }
-        item { Panel {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PersonOutline, null, Modifier.size(28.dp)) }
-                Column(Modifier.weight(1f)) { Text(state.profile?.name?.takeIf { it.isNotBlank() } ?: "Your profile", style = MaterialTheme.typography.titleLarge); Text(state.profile?.activity?.label ?: "A few details, at your pace", style = MaterialTheme.typography.bodyMedium) }
-            }
-            state.profile?.goals?.takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (state.demo) BadgeText("Read-only sample profile") else OutlinedButton(onClick = model::openProfile, modifier = Modifier.fillMaxWidth()) { Text(if (state.profile == null) "Create profile" else "Edit profile") }
-        } }
-        item { SectionLabel("Body measurements", "UPDATE MONTHLY") }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                MeasurementKind.entries.forEach { kind ->
-                    val measurement = HealthRules.effectiveMeasurement(state.measurements, kind, Instant.now())
-                    Panel {
-                        Text(if (kind == MeasurementKind.WEIGHT) "Weight" else "Height", style = MaterialTheme.typography.titleMedium)
-                        Text(measurement?.let { displayMeasurement(it, state.profile?.imperialDisplay == true, locale) } ?: "Not recorded", style = MaterialTheme.typography.headlineMedium)
-                        if (measurement != null) {
-                            Text("${measurement.date} · ${if (measurement.acquisition == Acquisition.MEASURED) "Measured" else "Manually entered"}", style = MaterialTheme.typography.bodySmall)
-                            if (HealthRules.stale(measurement, model.today())) BadgeText("Over 30 days old · time for an update")
-                        }
-                        if (!state.demo) FilledTonalButton(onClick = { model.openMeasurement(kind) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Add ${kind.name.lowercase()}") }
+        items(MeasurementKind.entries.toList()) { kind ->
+            val value=HealthRules.effectiveMeasurement(state.measurements,kind,Instant.now())
+            OutlinedCard(onClick={ model.openMeasurement(kind) },enabled=!state.demo,modifier=Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(20.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if(kind==MeasurementKind.HEIGHT) "Height" else "Weight",style=MaterialTheme.typography.labelLarge)
+                        Text(value?.let { displayMeasurement(it,profile?.imperialDisplay==true,locale) } ?: "Add",style=MaterialTheme.typography.titleLarge)
                     }
+                    Icon(Icons.Outlined.Edit,"Edit "+kind.name.lowercase())
                 }
-                TextButton(onClick = history, modifier = Modifier.fillMaxWidth()) { Text("View and correct measurement history"); Icon(Icons.Outlined.ChevronRight, null) }
             }
         }
-        item { Panel {
-            Text("Daily energy target", style = MaterialTheme.typography.titleMedium)
-            Text(target?.calories?.let { "${it.roundToInt()} kcal" } ?: "Not available", style = MaterialTheme.typography.headlineMedium)
-            BadgeText(if (target?.manual == true) "Manually entered" else "Estimate · not a prescription")
-            Text(target?.explanation ?: "Add optional profile inputs, height, and weight for an estimate. You can also set your own target.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            target?.bmr?.let { Text("Estimated BMR ${it.roundToInt()} kcal/day. Activity is already included in maintenance; exercise is not added twice.", style = MaterialTheme.typography.bodySmall) }
-            if (!state.demo) OutlinedButton(onClick = model::openTarget, modifier = Modifier.fillMaxWidth()) { Text("Manage target") }
-        } }
-        item { PrivacyNote() }
+        item { TextButton(onClick=history) { Text("Measurement history") } }
     }
 }
 
@@ -370,27 +245,14 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
 @Composable internal fun Field(label: String, value: String, change: (String) -> Unit, hint: String? = null, numeric: Boolean = false, multiline: Boolean = false) {
     OutlinedTextField(value = value, onValueChange = change, label = { Text(label) }, supportingText = hint?.let { { Text(it) } }, modifier = Modifier.fillMaxWidth(), singleLine = !multiline, minLines = if (multiline) 2 else 1, keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text), shape = RoundedCornerShape(14.dp))
 }
-@Composable private fun ProfileForm(model: MetricMeViewModel) {
-    val name by model.name.collectAsStateWithLifecycle(); val birth by model.birthDate.collectAsStateWithLifecycle()
-    val gender by model.gender.collectAsStateWithLifecycle(); val equation by model.equation.collectAsStateWithLifecycle()
-    val activity by model.activity.collectAsStateWithLifecycle(); val disabled by model.disableAuto.collectAsStateWithLifecycle()
-    val goals by model.goals.collectAsStateWithLifecycle(); val restrictions by model.restrictions.collectAsStateWithLifecycle()
-    val imperial by model.imperial.collectAsStateWithLifecycle()
-    PageTitle("Made for you", "Your profile", "All fields are optional. Adults 18+ only.")
-    Field("What should we call you?", name, { model.text("name", it) })
-    Field("Birthdate (optional)", birth, { model.text("birthDate", it) }, "YYYY-MM-DD · used to calculate age for estimates")
-    Field("Gender identity (optional)", gender, { model.text("gender", it) }, "Never used to choose a calorie equation input")
-    SectionLabel("Calorie equation input")
-    Text("Mifflin–St Jeor was developed with two study groups. Select a coefficient only if you want an estimate. This is separate from gender identity; a clinician can help if neither fits.", style = MaterialTheme.typography.bodyMedium)
-    Choice("No estimate / prefer not to say", equation.isEmpty(), { model.text("equation", "") })
-    EquationInput.entries.forEach { input -> Choice(input.label, equation == input.name, { model.text("equation", input.name) }) }
-    SectionLabel("Usual activity")
-    Text("Includes routine exercise; it will not be counted again.", style = MaterialTheme.typography.bodySmall)
-    ActivityLevel.entries.forEach { level -> Choice("${level.label} · ×${level.multiplier}", activity == level.name, { model.text("activity", level.name) }) }
-    CheckRow("Disable automatic calorie recommendations", "For pregnancy, breastfeeding, or whenever you prefer manual targets.", disabled) { model.flag("disableAuto", it) }
-    Field("What would you like to work on?", goals, { model.text("goals", it) }, "Optional goals; no aggressive deficit is created", multiline = true)
-    Field("Allergies, restrictions, or preferences", restrictions, { model.text("restrictions", it) }, "Optional; available for future coaching", multiline = true)
-    CheckRow("Display imperial units", "Storage and measurement entry remain in kg and cm.", imperial) { model.flag("imperial", it) }
+@Composable private fun ProfileForm(model:MetricMeViewModel) {
+    val name by model.name.collectAsStateWithLifecycle()
+    val birth by model.birthDate.collectAsStateWithLifecycle()
+    val gender by model.gender.collectAsStateWithLifecycle()
+    Text("Your details",style=MaterialTheme.typography.headlineMedium)
+    Field("Name",name,{ model.text("name",it) })
+    Field("Date of birth",birth,{ model.text("birthDate",it) },"YYYY-MM-DD · used to calculate age")
+    Field("Gender",gender,{ model.text("gender",it) })
 }
 @Composable internal fun Choice(label: String, selected: Boolean, click: () -> Unit) {
     Surface(onClick = click, shape = RoundedCornerShape(14.dp), color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth().semantics { role = Role.RadioButton; this.selected = selected }) {
