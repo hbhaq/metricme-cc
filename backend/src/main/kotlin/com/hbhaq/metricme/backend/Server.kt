@@ -53,7 +53,7 @@ fun main() {
     val gateway=config.key?.takeIf { it.isNotBlank() }?.let { OpenAiGateway(it,config.visionModel,config.transcriptionModel) }
     embeddedServer(Netty,host="0.0.0.0",port=System.getenv("PORT")?.toIntOrNull()?:8080) { metricMe(config,store,gateway) }.start(wait=true)
 }
-fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,verify:(String)->String?=verifier(config)) {
+fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,verify:(String)->String?=verifier(config),journal:JournalStore?=(store as? PostgresJobs)?.let { PostgresJournal(it.pool) }) {
     install(ContentNegotiation) { json(WireJson) }
     install(StatusPages) {
         exception<ApiFailure> { call,e -> if(e.status==429) call.response.header(HttpHeaders.RetryAfter,"60"); call.respond(HttpStatusCode.fromValue(e.status),ApiError(e.code,e.retryable,UUID.randomUUID().toString())) }
@@ -69,6 +69,7 @@ fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,
         get("/health/live") { call.respond(ServiceInfo("live",gateway!=null,config.authConfigured)) }
         get("/health/ready") { if(store?.ready()!=true) call.respond(HttpStatusCode.ServiceUnavailable,ServiceInfo("database_unavailable",gateway!=null,config.authConfigured)) else call.respond(ServiceInfo("ready",gateway!=null,config.authConfigured)) }
         authenticate("oidc") {
+            journalRoutes(journal,gateway,slots)
             for((route,kind) in listOf("food-estimates" to "FOOD","activity-transcriptions" to "ACTIVITY")) post("/v1/$route") {
                 val user=call.principal<SubjectPrincipal>()!!.hash
                 val jobs=store?:throw ApiFailure("not_configured",503); val ai=gateway?:throw ApiFailure("not_configured",503)
@@ -92,7 +93,7 @@ fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,
             }
             get("/v1/jobs/{id}") { val user=call.principal<SubjectPrincipal>()!!.hash; val job=withContext(Dispatchers.IO) { store?.get(user,call.parameters["id"].orEmpty()) }?:throw ApiFailure("not_found",404); call.respond(job.response()) }
             delete("/v1/jobs/{id}") { val user=call.principal<SubjectPrincipal>()!!.hash; withContext(Dispatchers.IO) { store?.cancel(user,call.parameters["id"].orEmpty()) }; call.respond(HttpStatusCode.NoContent) }
-            delete("/v1/account/data") { val user=call.principal<SubjectPrincipal>()!!.hash; withContext(Dispatchers.IO) { store?.purge(user) }; call.respond(HttpStatusCode.NoContent) }
+            delete("/v1/account/data") { val user=call.principal<SubjectPrincipal>()!!.hash; withContext(Dispatchers.IO) { store?.purge(user); journal?.purge(user) }; call.respond(HttpStatusCode.NoContent) }
         }
     }
 }

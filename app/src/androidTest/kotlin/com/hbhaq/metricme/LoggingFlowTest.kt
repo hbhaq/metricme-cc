@@ -8,6 +8,8 @@ import org.junit.Test
 class LoggingFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun begin(label: String) {
+        compose.waitUntil(15000) { compose.onAllNodesWithText("Offline manual journal").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Offline manual journal").performClick()
         try {
             compose.waitUntil(20000) { compose.onAllNodesWithText("Log", useUnmergedTree = false).fetchSemanticsNodes().isNotEmpty() }
         } catch (e: Throwable) {
@@ -21,7 +23,6 @@ class LoggingFlowTest {
         compose.onNodeWithText("Calories (optional)").performScrollTo().performTextInput("200")
         compose.onNodeWithText("Save entry").performClick()
         compose.waitUntil(15000) { compose.onAllNodesWithText("Save entry").fetchSemanticsNodes().isEmpty() }
-        compose.onNodeWithText("Journal").performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("UI toast"))
         compose.onNodeWithText("UI toast").assertExists()
         compose.onNodeWithText("Edit food").performScrollTo().performClick()
@@ -40,7 +41,6 @@ class LoggingFlowTest {
         compose.onNodeWithText("Daily step total").performTextInput("0")
         compose.onNodeWithText("Save entry").performClick()
         compose.waitUntil(15000) { compose.onAllNodesWithText("Save entry").fetchSemanticsNodes().isEmpty() }
-        compose.onNodeWithText("Journal").performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("0 daily steps"))
         compose.onNodeWithText("0 daily steps").assertExists()
         compose.onNodeWithText("Delete", substring = false).performScrollTo().performClick(); compose.onNodeWithText("Delete record").performClick()

@@ -102,9 +102,9 @@ private fun statusLabel(status:String)=when(status) {
     var client by rememberSaveable { mutableStateOf(settings.clientId) }; var audience by rememberSaveable { mutableStateOf(settings.audience) }
     Panel {
         Icon(Icons.Outlined.AutoAwesome,null,tint=MaterialTheme.colorScheme.primary)
-        Text("AI account",style=MaterialTheme.typography.titleLarge)
+        Text("Journal & AI account",style=MaterialTheme.typography.titleLarge)
         BadgeText(if(model.sessions.signedIn()) "Connected" else "Sign-in needed")
-        Text("Sign in to estimate meals and activity. Manual logging works without an account.")
+        Text("Sign in for your cloud journal, photo and voice logging. Offline manual records stay on this device.")
         message?.let { Text(it) }
         if(settings.complete) {
             if(model.sessions.signedIn()) {

@@ -18,7 +18,8 @@ class AiFlowTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     private fun openAssist() {
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("AI",useUnmergedTree=true).performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Older AI drafts"))
+        compose.onNodeWithText("Older AI drafts").performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         if(android.os.Build.VERSION.SDK_INT>=29) {
             val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -47,10 +48,12 @@ class AiFlowTest {
         val graph=EntryPointAccessors.fromApplication(InstrumentationRegistry.getInstrumentation().targetContext,AiEntryPoint::class.java)
         val before=graph.drafts().dao.all().map { it.id }.toSet()
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Explore with sample data"))
-        compose.onNodeWithText("Explore with sample data").performClick()
+        compose.onNode(hasText("Setup") and hasClickAction()).performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Explore demo mode"))
+        compose.onNodeWithContentDescription("Explore demo mode").performClick()
         try {
-            compose.onNodeWithText("AI",useUnmergedTree=true).performClick()
+            compose.onNode(hasText("Journal") and hasClickAction()).performClick()
+            compose.onNodeWithText("Explore sample AI reviews").performClick()
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Try sample food review"))
             compose.onNodeWithText("Try sample food review").performClick()
             compose.onNodeWithText("SAMPLE DATA · LOCAL EXAMPLE").assertExists()

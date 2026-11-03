@@ -10,6 +10,21 @@ import java.net.InetSocketAddress
 import java.net.URI
 
 class OpenAiGatewayTest {
+    @Test fun journalExtractsMixedCategoriesWithStrictSchemaAndNoConversationHistory() {
+        val time=java.time.Instant.now().minusSeconds(60).toString()
+        val extracted=JournalExtraction("LOG","I ate eggs and slept seven hours",listOf(JournalFact("FOOD","Eggs","Reported breakfast",time,calories=140.0,estimated=true),JournalFact("SLEEP","Sleep","Reported seven hours",time,durationMinutes=420.0)),null,null,null)
+        withServer(response(WireJson.encodeToString(extracted))) { origin,seen -> runBlocking {
+            val result=OpenAiGateway("test-key",origin=origin).journal(JournalInput(text=extracted.transcript,time=time,zone="UTC",consented=true),byteArrayOf())
+            assertEquals(listOf("FOOD","SLEEP"),result.entries.map { it.category })
+            val payload=WireJson.parseToJsonElement(seen.single()).jsonObject
+            assertEquals(false,payload["store"]!!.jsonPrimitive.boolean)
+            assertNull(payload["previous_response_id"]); assertNull(payload["conversation"])
+            assertTrue(payload["instructions"]!!.jsonPrimitive.content.contains("never infer consumption"))
+            val format=payload["text"]!!.jsonObject["format"]!!.jsonObject
+            assertTrue(format["strict"]!!.jsonPrimitive.boolean)
+            assertTrue(format["schema"].toString().contains("MEDICATION"))
+        } }
+    }
     private fun response(text:String,type:String="output_text",status:String="completed")=buildJsonObject { put("status",status); putJsonArray("output") { add(buildJsonObject { putJsonArray("content") { add(buildJsonObject { put("type",type); put(if(type=="refusal") "refusal" else "text",text) }) } }) } }.toString()
     private fun withServer(body:String,status:Int=200,stallMillis:Long=0,test:(URI,MutableList<String>)->Unit) {
         val seen=java.util.Collections.synchronizedList(mutableListOf<String>())

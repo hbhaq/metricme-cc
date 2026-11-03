@@ -40,14 +40,13 @@ import kotlin.math.roundToInt
 
 private data class Destination(val route: String, val label: String, val icon: ImageVector)
 private val destinations = listOf(
-    Destination("today", "Today", Icons.Outlined.WbSunny),
     Destination("journal", "Journal", Icons.AutoMirrored.Outlined.MenuBook),
-    Destination("assist", "AI", Icons.Outlined.AutoAwesome),
+    Destination("insights", "Insights", Icons.Outlined.BarChart),
     Destination("setup", "Setup", Icons.Outlined.Settings)
 )
 
 @Composable
-fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbhaq.metricme.ai.AiViewModel) {
+fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbhaq.metricme.ai.AiViewModel, journal:com.hbhaq.metricme.journal.JournalViewModel) {
     val state by model.state.collectAsStateWithLifecycle()
     val form by model.formKind.collectAsStateWithLifecycle()
     val logs by logging.state.collectAsStateWithLifecycle()
@@ -56,10 +55,10 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     LaunchedEffect(state.demo) { logging.setDemo(state.demo) }
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
-    val route = entry?.destination?.route ?: "today"
+    val route = entry?.destination?.route ?: "journal"
     Scaffold(
         floatingActionButton = {
-            if (!state.demo && !state.loading && route in setOf("today", "journal")) FloatingActionButton(onClick = { picker = true }) {
+            if (!state.demo && !state.loading && route in setOf("today", "offline")) FloatingActionButton(onClick = { picker = true }) {
                 Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Outlined.Add, null)
                     Text("Log", style = MaterialTheme.typography.labelLarge)
@@ -83,7 +82,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
                 }
                 Spacer(Modifier.width(9.dp)); Text("metricme", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.weight(1f))
-                BadgeText(if (state.demo) "SAMPLE DATA" else "ON DEVICE", if (state.demo) Icons.Outlined.Science else Icons.Outlined.Lock)
+                BadgeText(if (state.demo) "SAMPLE DATA" else if(route in setOf("journal","insights")) "PRIVATE CLOUD" else "ON DEVICE", if (state.demo) Icons.Outlined.Science else Icons.Outlined.Lock)
             }
             if (state.demo) {
                 Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(start = 24.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -94,11 +93,14 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
             if (state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.semantics { contentDescription = "Loading local profile" }) }
             else {
                 if (state.error != null && form.isEmpty()) ErrorMessage(state.error!!, model::clearError)
-                NavHost(navController = nav, startDestination = "today", modifier = Modifier.weight(1f)) {
+                NavHost(navController = nav, startDestination = "journal", modifier = Modifier.weight(1f)) {
                     composable("today") { if (state.demo) TodayScreen(state, model.today(), model::openProfile, { nav.navigate("you") }, { model.setDemo(true) }) else ManualTodayScreen(state, model, logs, logging, { nav.navigate("routines") }) }
-                    composable("journal") { if (state.demo) JournalScreen(state, { nav.navigate("measurements") }) else ManualJournalScreen(logs, logging, { nav.navigate("measurements") }) }
-                    composable("insights") { InsightsScreen() }
-                    composable("setup") { SetupScreen(state, model, ai, { nav.navigate("you") }, { nav.navigate("routines") }) }
+                    composable("journal") { if(state.demo) {
+                        Column { TextButton(onClick={ nav.navigate("assist") }) { Text("Explore sample AI reviews") }; JournalScreen(state,{ nav.navigate("measurements") }) }
+                    } else com.hbhaq.metricme.journal.ConversationalJournal(journal,{ nav.navigate("setup") },{ nav.navigate("offline") },{ nav.navigate("assist") }) }
+                    composable("offline") { ManualJournalScreen(logs,logging,{ nav.navigate("measurements") }) }
+                    composable("insights") { com.hbhaq.metricme.journal.CloudInsightsScreen(journal,state.demo) { nav.navigate("setup") } }
+                    composable("setup") { SetupScreen(state, model, ai, journal, { nav.navigate("you") }, { nav.navigate("routines") }) }
                     composable("you") { YouScreen(state, model, { nav.navigate("measurements") }, { nav.navigate("routines") }, { nav.navigate("assist") }) }
                     composable("measurements") { MeasurementScreen(state, model) { nav.popBackStack() } }
                     composable("routines") { RoutinesScreen(logs, logging, state.demo) { nav.popBackStack() } }
@@ -112,8 +114,10 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     if (picker && !state.demo) LogPicker(onDismiss = { picker = false }, onLog = { picker = false; logging.openLog(it) }, onRoutine = { picker = false; logging.openRoutine(it) }, onAi = { picker = false; nav.navigate("assist") })
 }
 
-@Composable private fun SetupScreen(state:AppState,model:MetricMeViewModel,ai:com.hbhaq.metricme.ai.AiViewModel,profile:()->Unit,routines:()->Unit) {
+@Composable private fun SetupScreen(state:AppState,model:MetricMeViewModel,ai:com.hbhaq.metricme.ai.AiViewModel,journal:com.hbhaq.metricme.journal.JournalViewModel,profile:()->Unit,routines:()->Unit) {
     val error by ai.error.collectAsStateWithLifecycle()
+    val cloud by journal.state.collectAsStateWithLifecycle()
+    var deleteCloud by rememberSaveable { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
         item { PageTitle("Preferences", "Setup", "Your account, profile and reminders in one place.") }
         error?.let { item { ErrorMessage(it) { ai.error.value=null } } }
@@ -131,7 +135,15 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
             }
         } }
         item { PrivacyNote() }
+        if(!state.demo && cloud.signedIn) item { Panel {
+            Text("Cloud journal privacy",style=MaterialTheme.typography.titleMedium)
+            Text("Sent messages become categorized records in your account until deleted. Raw media is not kept in the cloud journal. Offline manual records remain separate.",style=MaterialTheme.typography.bodySmall)
+            if(cloud.consentAccepted) TextButton(onClick=journal::revokeConsent,enabled=!cloud.busy) { Text("Ask for consent before the next message") }
+            TextButton(onClick={ deleteCloud=true },enabled=!cloud.busy) { Text("Delete cloud journal & AI results",color=MaterialTheme.colorScheme.error) }
+            cloud.error?.let { ErrorMessage(it,journal::dismissError) }
+        } }
     }
+    if(deleteCloud) AlertDialog(onDismissRequest={ deleteCloud=false },title={ Text("Delete cloud journal and AI results?") },text={ Text("This permanently deletes all saved cloud journal entries and temporary AI results for this account. Offline manual records on this device remain. This cannot be undone.") },confirmButton={ TextButton(onClick={ deleteCloud=false; journal.clearCloudData() }) { Text("Delete cloud data") } },dismissButton={ TextButton(onClick={ deleteCloud=false }) { Text("Keep data") } })
 }
 
 @Composable internal fun PageTitle(eyebrow: String, title: String, subtitle: String? = null) {

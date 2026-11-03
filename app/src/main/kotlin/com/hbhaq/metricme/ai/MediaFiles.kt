@@ -54,7 +54,8 @@ data class RecordingState(val active:Boolean=false,val seconds:Int=0,val path:St
     @Volatile private var discardRequested=false
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     @android.annotation.SuppressLint("MissingPermission") // Caller requests and checks RECORD_AUDIO; revocation/errors are handled.
-    @Synchronized fun start() {
+    @Synchronized fun start(maxSeconds:Int=120) {
+        require(maxSeconds in 1..120)
         check(task?.isActive!=true)
         discardRequested=false
         state.value.path?.let(files::delete)
@@ -69,8 +70,8 @@ data class RecordingState(val active:Boolean=false,val seconds:Int=0,val path:St
             try {
                 RandomAccessFile(file,"rw").use { out ->
                     out.write(ByteArray(44)); audio.startRecording(); val buffer=ByteArray(4096)
-                    while(isActive && state.value.active && count<120*32000) {
-                        val n=audio.read(buffer,0,minOf(buffer.size,120*32000-count))
+                    while(isActive && state.value.active && count<maxSeconds*32000) {
+                        val n=audio.read(buffer,0,minOf(buffer.size,maxSeconds*32000-count))
                         if(n<=0) { if(!state.value.active) break; error("Recording was interrupted.") }
                         out.write(buffer,0,n); count+=n; state.value=state.value.copy(seconds=count/32000)
                     }

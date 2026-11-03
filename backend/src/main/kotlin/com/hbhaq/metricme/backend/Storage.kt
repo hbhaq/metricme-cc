@@ -24,7 +24,7 @@ interface JobStore : AutoCloseable {
     override fun close() {}
 }
 class PostgresJobs(url: String) : JobStore {
-    private val pool = HikariDataSource(HikariConfig().apply {
+    internal val pool = HikariDataSource(HikariConfig().apply {
         if (url.startsWith("jdbc:")) jdbcUrl = url else {
             val uri = URI(url); require(uri.scheme in listOf("postgres", "postgresql"))
             jdbcUrl = "jdbc:postgresql://${uri.host}:${if (uri.port < 0) 5432 else uri.port}${uri.path}${uri.rawQuery?.let { "?$it" }.orEmpty()}"
