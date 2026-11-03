@@ -184,7 +184,8 @@ data class JournalState(
     fun ask()=launch { who,api,token ->
         val pending=withContext(Dispatchers.IO) { read(who,"question")?.let { WireJson.decodeFromString<PendingJournal>(it) } }?:run {
             if(questionText.value.isBlank()) throw JournalException("Type a question about your saved records.")
-            val input=JournalInput(text=questionText.value,time=Instant.now().toString(),zone=ZoneId.systemDefault().id,consented=true,mode="INSIGHTS",clarificationContext=state.value.questions.lastOrNull()?.transcript.orEmpty().take(10000))
+            val range=InsightPeriods.range(state.value.period,java.time.LocalDate.parse(state.value.insightDate))
+            val input=JournalInput(text=questionText.value,time=Instant.now().toString(),zone=ZoneId.systemDefault().id,consented=true,mode="INSIGHTS",clarificationContext="Selected period: ${range.first} to ${range.second}.\nPrevious question: ${state.value.questions.lastOrNull()?.transcript.orEmpty().take(10000)}")
             JournalRules.input(input)
             PendingJournal(UUID.randomUUID().toString(),input).also { withContext(Dispatchers.IO) { write(who,"question",WireJson.encodeToString(it)) }; state.value=state.value.copy(questionPending=true) }
         }

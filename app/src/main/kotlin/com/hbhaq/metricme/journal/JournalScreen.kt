@@ -67,7 +67,7 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
             } }
             state.error?.let { message -> item { ErrorMessage(message,model::dismissError) } }
             if(state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.reply?.let { reply -> item { Panel {
+            state.reply?.let { raw -> val reply=MealRetention.reply(raw); item { Panel {
                 Text(if(reply.status=="SAVED") "Journalled" else if(reply.status=="CLARIFY") "A quick question" else "MetricMe",style=MaterialTheme.typography.titleMedium)
                 if(reply.transcript.isNotBlank()) Text("You: ${reply.transcript}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(reply.message)

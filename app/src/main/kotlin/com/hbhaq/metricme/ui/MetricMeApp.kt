@@ -139,7 +139,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
         item { PrivacyNote() }
         if(!state.demo && cloud.signedIn) item { Panel {
             Text("Cloud journal privacy",style=MaterialTheme.typography.titleMedium)
-            Text("Sent messages become categorized records in your account until deleted. Raw media is not kept in the cloud journal. Offline manual records remain separate.",style=MaterialTheme.typography.bodySmall)
+            Text("Meal details are kept for three months; nutrition summaries remain until deleted. Other categorized records remain until deleted. Raw media is not kept in the cloud journal. Offline manual records remain separate.",style=MaterialTheme.typography.bodySmall)
             if(cloud.consentAccepted) TextButton(onClick=journal::revokeConsent,enabled=!cloud.busy) { Text("Ask for consent before the next message") }
             TextButton(onClick={ deleteCloud=true },enabled=!cloud.busy) { Text("Delete cloud journal & AI results",color=MaterialTheme.colorScheme.error) }
             cloud.error?.let { ErrorMessage(it,journal::dismissError) }
