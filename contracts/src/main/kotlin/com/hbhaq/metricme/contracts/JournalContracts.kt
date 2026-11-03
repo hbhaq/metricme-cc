@@ -37,7 +37,7 @@ val JOURNAL_CATEGORIES = listOf("FOOD", "MEDICATION", "SLEEP", "ACTIVITY", "WATE
     val fromDate:String,val toDate:String,val daysInPeriod:Int,val daysLogged:Int,val totalEntries:Int,
     val categories:List<CategorySummary>,val foodCalories:Double?,val foodWithCalories:Int,
     val averageSleepMinutes:Double?,val sleepWithDuration:Int,val reportedSteps:Long?,val activityWithSteps:Int,
-    val note:String="Based only on recorded entries. Missing days are unknown. Associations do not establish causes."
+    val note:String="Based only on recorded entries. Missing days are unknown. Separate sleep reports may overlap. Associations do not establish causes."
 )
 
 object JournalRules {
@@ -53,6 +53,7 @@ object JournalRules {
     }
     fun fact(value:JournalFact,now:Instant=Instant.now()) {
         require(value.category in JOURNAL_CATEGORIES && value.title.isNotBlank() && value.title.length<=160 && value.note.length<=2000)
+        require(value.category=="FOOD" || !value.estimated) { "Only food estimates may contain inferred quantities." }
         require(Instant.parse(value.occurredAt)<=now.plusSeconds(300)) { "Journal events must not be in the future." }
         require(value.unit==null || value.unit.length<=50); require(value.dose==null || value.dose.length<=200)
         fun bounded(v:Double?,max:Double) { require(v==null || v.isFinite() && v in 0.0..max) }

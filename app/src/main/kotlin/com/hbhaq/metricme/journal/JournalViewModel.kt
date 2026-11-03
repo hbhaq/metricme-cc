@@ -162,9 +162,10 @@ data class JournalState(
     fun delete(entry:JournalRecord)=launch { who,api,token ->
         if(!api.delete(token,entry.id).isSuccessful) throw JournalException("Could not delete yet. Please retry.")
         withContext(Dispatchers.IO) { path(who,"entries").delete() }
+        state.value=state.value.copy(reply=null,insights=null)
         load(who,api,token)
     }
-    fun edit(entry:JournalRecord,fact:JournalFact,done:()->Unit)=launch { who,api,token -> JournalRules.fact(fact); api.edit(token,entry.id,JournalEdit(entry.revision,fact)).value(); withContext(Dispatchers.IO) { path(who,"entries").delete() }; load(who,api,token); done() }
+    fun edit(entry:JournalRecord,fact:JournalFact,done:()->Unit)=launch { who,api,token -> JournalRules.fact(fact); api.edit(token,entry.id,JournalEdit(entry.revision,fact)).value(); withContext(Dispatchers.IO) { path(who,"entries").delete() }; state.value=state.value.copy(reply=null,insights=null); load(who,api,token); done() }
     fun insights()=launch { who,api,token -> val data=api.insights(token,ZoneId.systemDefault().id).value(); if(active==who) state.value=state.value.copy(insights=data,reply=JournalReply("","ANSWER",message="Last 30 days",insights=data)) }
     override fun onCleared() { recorder.stop(); super.onCleared() }
 }

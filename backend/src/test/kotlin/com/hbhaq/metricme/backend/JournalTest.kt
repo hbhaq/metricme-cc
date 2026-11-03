@@ -39,8 +39,10 @@ class JournalTest {
             val store=PostgresJournal(db.pool); val owner=UUID.randomUUID().toString(); val id=UUID.randomUUID().toString()
             store.begin(owner,id,"hash")
             val row=store.finish(owner,id,JournalReply(id,"SAVED",entries=listOf(JournalRecord("",id,0,fact())))).entries.single()
+            val question=UUID.randomUUID().toString(); store.begin(owner,question,"question"); store.finish(owner,question,JournalReply(question,"ANSWER",references=listOf(row)))
             val updated=store.edit(owner,row.id,JournalEdit(0,row.fact.copy(title="Corrected")))
             assertEquals(1,updated.revision); assertEquals("Corrected",store.page(owner,null,null).entries.single().fact.title)
+            assertTrue(store.begin(owner,question,"question").second.references.isEmpty())
             assertThrows(ApiFailure::class.java) { store.edit(owner,row.id,JournalEdit(0,row.fact)) }
             assertThrows(ApiFailure::class.java) { store.edit("other",row.id,JournalEdit(1,row.fact)) }
             store.remove(owner,row.id)

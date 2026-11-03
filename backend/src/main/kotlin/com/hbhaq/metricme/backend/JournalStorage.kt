@@ -34,7 +34,9 @@ class PostgresJournal(private val pool:HikariDataSource):JournalStore {
             if(r.getString("payload_hash")!=hash) throw ApiFailure("idempotency_conflict",409)
             val status=r.getString("status")
             val content=r.getString("result")
-            return@transaction false to if(content!=null) WireJson.decodeFromString<JournalReply>(content) else JournalReply(id,if(status=="PROCESSING" && r.getLong("created_at")<System.currentTimeMillis()-300000) "UNCERTAIN" else status,message="No additional entries were saved. Start a new message only after checking your journal.")
+            val expired=status=="PROCESSING" && r.getLong("created_at")<System.currentTimeMillis()-300000
+            if(expired) invalidate(c,owner,id,"UNCERTAIN")
+            return@transaction false to if(content!=null) WireJson.decodeFromString<JournalReply>(content) else JournalReply(id,if(expired) "UNCERTAIN" else status,message="No additional entries were saved. Start a new message only after checking your journal.")
         } } }
         val count=c.prepareStatement("SELECT COUNT(*) FROM journal_messages WHERE owner_hash=? AND created_at>?").use { it.setString(1,owner); it.setLong(2,System.currentTimeMillis()-3600000); it.executeQuery().use { r -> r.next(); r.getInt(1) } }
         if(count>=30) throw ApiFailure("rate_limited",429,true)
@@ -72,7 +74,11 @@ class PostgresJournal(private val pool:HikariDataSource):JournalStore {
         invalidate(c,owner,message,"EDITED")
         JournalRecord(id,message,edit.revision+1,edit.fact)
     }
-    private fun invalidate(c:Connection,owner:String,message:String,status:String) { c.prepareStatement("UPDATE journal_messages SET status=?,result=NULL WHERE owner_hash=? AND id=?").use { it.setString(1,status); it.setString(2,owner); it.setString(3,message); it.executeUpdate() } }
+    private fun invalidate(c:Connection,owner:String,message:String,status:String) {
+        c.prepareStatement("UPDATE journal_messages SET status=?,result=NULL WHERE owner_hash=? AND id=?").use { it.setString(1,status); it.setString(2,owner); it.setString(3,message); it.executeUpdate() }
+        // Answers can contain copies of referenced records. Edits/deletes invalidate those snapshots too.
+        c.prepareStatement("UPDATE journal_messages SET result=NULL WHERE owner_hash=? AND status='ANSWER'").use { it.setString(1,owner); it.executeUpdate() }
+    }
     override fun remove(owner:String,id:String) { transaction { c -> lock(c,owner)
         val message=c.prepareStatement("SELECT message_id FROM journal_entries WHERE owner_hash=? AND id=?").use { it.setString(1,owner); it.setString(2,id); it.executeQuery().use { r -> if(r.next()) r.getString(1) else null } }
         c.prepareStatement("DELETE FROM journal_entries WHERE owner_hash=? AND id=?").use { it.setString(1,owner); it.setString(2,id); it.executeUpdate() }
@@ -82,6 +88,7 @@ class PostgresJournal(private val pool:HikariDataSource):JournalStore {
         // Tombstone even a not-yet-received submission, preventing late responses from resurrecting it.
         c.prepareStatement("INSERT INTO journal_messages VALUES (?,?,?,'DELETED',NULL,?) ON CONFLICT(owner_hash,id) DO UPDATE SET status='DELETED',result=NULL").use { it.setString(1,owner); it.setString(2,message); it.setString(3,"deleted"); it.setLong(4,System.currentTimeMillis()); it.executeUpdate() }
         c.prepareStatement("DELETE FROM journal_entries WHERE owner_hash=? AND message_id=?").use { it.setString(1,owner); it.setString(2,message); it.executeUpdate() }
+        c.prepareStatement("UPDATE journal_messages SET result=NULL WHERE owner_hash=? AND status='ANSWER'").use { it.setString(1,owner); it.executeUpdate() }
     } }
     override fun purge(owner:String) { transaction { c -> lock(c,owner)
         c.prepareStatement("DELETE FROM journal_entries WHERE owner_hash=?").use { it.setString(1,owner); it.executeUpdate() }
