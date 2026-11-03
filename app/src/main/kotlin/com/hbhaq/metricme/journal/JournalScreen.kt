@@ -145,7 +145,7 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
     }
 }
 
-private fun factDetails(f:JournalFact)=listOfNotNull(f.quantity?.let { "$it ${f.unit.orEmpty()}" },f.dose,f.durationMinutes?.let { "$it minutes" },f.steps?.let { "$it steps" },f.calories?.let { "$it kcal" }).joinToString(" · ")
+private fun factDetails(f:JournalFact)=listOfNotNull(f.quantity?.let { "$it ${f.unit.orEmpty()}" },f.dose,f.durationMinutes?.let { "$it minutes" },f.steps?.let { "$it steps" },f.calories?.let { (if(f.estimated) "Estimated " else "")+"$it kcal" }).joinToString(" · ")
 
 @Composable private fun JournalEditor(entry:JournalRecord,busy:Boolean,close:()->Unit,save:(JournalFact)->Unit) {
     var title by rememberSaveable(entry.id) { mutableStateOf(entry.fact.title) }

@@ -76,18 +76,18 @@ data class JournalState(
         val binding=identity()
         if(active!=binding) {
             request?.cancel(); recorder.discard(); state.value.attachment?.let(media::delete)
-            active=binding; saved["journalText"]=""; saved["insightQuestion"]=""; state.value=JournalState(signedIn=binding!=null)
+            active=binding; saved["journalText"]=""; saved["insightQuestion"]=""; state.value=JournalState(signedIn=binding!=null,busy=binding!=null)
             if(binding!=null) {
                 val cache=withContext(Dispatchers.IO) { trimMealCache(context); read(binding,"entries")?.let { runCatching { WireJson.decodeFromString<JournalPage>(it) }.getOrNull() } }
                 val contexts=withContext(Dispatchers.IO) { listOf("log-context","insight-context").map { name -> read(binding,name)?.let { runCatching { WireJson.decodeFromString<JournalReply>(it) }.getOrNull() } } }
-                if(active==binding) { state.value=state.value.copy(entries=cache?.entries.orEmpty(),before=cache?.nextBefore,reply=contexts[0],messages=listOfNotNull(contexts[0]),questions=listOfNotNull(contexts[1]),pending=withContext(Dispatchers.IO) { read(binding,"pending")!=null },questionPending=withContext(Dispatchers.IO) { read(binding,"question")!=null },consentAccepted=withContext(Dispatchers.IO) { read(binding,"consent")==JOURNAL_CONSENT }); refresh() }
+                if(active==binding) { state.value=state.value.copy(entries=cache?.entries.orEmpty(),before=cache?.nextBefore,reply=contexts[0],messages=listOfNotNull(contexts[0]),questions=listOfNotNull(contexts[1]),pending=withContext(Dispatchers.IO) { read(binding,"pending")!=null },questionPending=withContext(Dispatchers.IO) { read(binding,"question")!=null },consentAccepted=withContext(Dispatchers.IO) { read(binding,"consent")==JOURNAL_CONSENT }); launch(allowBusy=true) { who,api,token -> load(who,api,token) } }
             }
         }
     } } }
     fun type(value:String) { if(value.length<=10000) saved["journalText"]=value }
     fun dismissError() { state.value=state.value.copy(error=null) }
-    private fun launch(block:suspend (String,JournalApi,String)->Unit) {
-        if(state.value.busy) return
+    private fun launch(allowBusy:Boolean=false,block:suspend (String,JournalApi,String)->Unit) {
+        if(state.value.busy && !allowBusy) return
         val who=active?:run { state.value=state.value.copy(error="Sign in from Setup to use your cloud journal."); return }
         val account=sessions.binding()?:return; val backend=sessions.settings().backend
         state.value=state.value.copy(busy=true,error=null)
@@ -174,7 +174,7 @@ data class JournalState(
         }
         state.value=state.value.copy(reply=reply,pending=false,insights=reply.insights,messages=(state.value.messages+reply).distinctBy { it.id }.takeLast(30))
         if(reply.status in listOf("SAVED","CLARIFY","ANSWER","DELETED","EDITED")) { saved["journalText"]=""; removeAttachment() }
-        load(who,api,token)
+        if(reply.status!="CLARIFY") load(who,api,token)
     }
     fun discardPending()=launch { who,api,token ->
         val pending=withContext(Dispatchers.IO) { read(who,"pending")?.let { WireJson.decodeFromString<PendingJournal>(it) } }
