@@ -19,6 +19,7 @@ import com.hbhaq.metricme.ui.ErrorMessage
 @Composable fun CloudInsightsScreen(model:JournalViewModel,demo:Boolean,setup:()->Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val question by model.questionText.collectAsStateWithLifecycle()
+    val questions=if(demo) emptyList() else state.questions
     var consent by rememberSaveable { mutableStateOf(false) }
     val list=rememberLazyListState()
     fun ask() { if(!state.signedIn) setup() else if(state.consentAccepted) model.ask() else consent=true }
@@ -30,16 +31,17 @@ import com.hbhaq.metricme.ui.ErrorMessage
             }
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),state=list,contentPadding=PaddingValues(20.dp,12.dp),verticalArrangement=Arrangement.spacedBy(24.dp)) {
-            if(state.questions.isEmpty()) item { Box(Modifier.fillParentMaxHeight(.65f).fillMaxWidth(),contentAlignment=Alignment.Center) { Text("Ask your history",style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onSurfaceVariant) } }
-            items(state.questions,key={ it.id }) { raw -> val reply=MealRetention.reply(raw)
+            if(questions.isEmpty()) item { Box(Modifier.fillParentMaxHeight(.65f).fillMaxWidth(),contentAlignment=Alignment.Center) { Text("Ask your history",style=MaterialTheme.typography.headlineMedium,color=MaterialTheme.colorScheme.onSurfaceVariant) } }
+            items(questions,key={ it.id }) { raw -> val reply=MealRetention.reply(raw)
                 Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
                     ChatUser(reply.transcript)
-                    if(reply.insights==null) Text(reply.message) else InsightTable(reply.insights)
-                    if(reply.references.isNotEmpty()) ReferenceTable(reply.references)
+                    val summary=reply.insights
+                    if(summary==null) Text(reply.message) else InsightTable(summary)
+                    if(reply.insights==null && reply.references.isNotEmpty()) ReferenceTable(reply.references)
                 }
             }
-            state.error?.let { item { ErrorMessage(it,model::dismissError) } }
-            if(state.busy) item { Text("Checking your records…",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+            (if(demo) null else state.error)?.let { item { ErrorMessage(it,model::dismissError) } }
+            if(state.busy&&!demo) item { Text("Checking your records…",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Surface(color=MaterialTheme.colorScheme.background) {
             Row(Modifier.fillMaxWidth().imePadding().padding(12.dp),verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(8.dp)) {

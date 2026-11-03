@@ -32,7 +32,7 @@ import java.time.format.DateTimeFormatter
 
 fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::uppercaseChar)
 
-@Composable fun ConversationalJournal(model:JournalViewModel,setup:()->Unit) {
+@Composable fun ConversationalJournal(model:JournalViewModel,setup:()->Unit,demo:Boolean=false) {
     val state by model.state.collectAsStateWithLifecycle()
     val text by model.text.collectAsStateWithLifecycle()
     val recording by model.recorder.state.collectAsStateWithLifecycle()
@@ -53,9 +53,9 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
         onDispose { owner.lifecycle.removeObserver(observer); model.recorder.stop() }
     }
     LaunchedEffect(recording.path) { if(recording.path!=null && !recording.active) model.keepRecording() }
-    val replies=state.messages.map(MealRetention::reply)
+    val replies=if(demo) emptyList() else state.messages.map(MealRetention::reply)
     val liveIds=replies.map { it.id }.toSet()
-    val history=state.entries.filter { it.messageId !in liveIds }.groupBy { it.messageId }.values.toList().reversed()
+    val history=(if(demo) emptyList() else state.entries).filter { it.messageId !in liveIds }.groupBy { it.messageId }.values.toList().reversed()
     LaunchedEffect(replies.size,state.busy) { if(list.layoutInfo.totalItemsCount>0) list.animateScrollToItem(list.layoutInfo.totalItemsCount-1) }
     fun send() { if(!state.signedIn) setup() else if(state.consentAccepted) model.send() else consent=true }
     Column(Modifier.fillMaxSize()) {
@@ -79,12 +79,12 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
                     if(reply.status=="SAVED" && state.reply?.id==reply.id) TextButton(onClick=model::undo,enabled=!state.busy) { Text("Undo") }
                 }
             }
-            state.error?.let { item { ErrorMessage(it,model::dismissError) } }
-            if(state.busy) item { Text("Thinking…",color=MaterialTheme.colorScheme.onSurfaceVariant) }
+            (if(demo) null else state.error)?.let { item { ErrorMessage(it,model::dismissError) } }
+            if(state.busy&&!demo) item { Text("Thinking…",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         Surface(color=MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().imePadding().padding(horizontal=12.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                if(state.pending) Row(verticalAlignment=Alignment.CenterVertically) {
+                if(state.pending&&!demo) Row(verticalAlignment=Alignment.CenterVertically) {
                     TextButton(onClick=model::send,enabled=!state.busy) { Text("Retry message") }
                     TextButton(onClick=model::discardPending,enabled=!state.busy) { Text("Cancel") }
                 } else {
@@ -100,10 +100,10 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
                     recording.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
                     Surface(shape=androidx.compose.foundation.shape.RoundedCornerShape(28.dp),color=MaterialTheme.colorScheme.surfaceContainer) {
                         Column(Modifier.padding(6.dp)) {
-                            TextField(text,model::type,placeholder={ Text("Message MetricMe") },modifier=Modifier.fillMaxWidth().heightIn(max=140.dp),enabled=!state.busy&&!recording.active,maxLines=4,colors=TextFieldDefaults.colors(focusedContainerColor=androidx.compose.ui.graphics.Color.Transparent,unfocusedContainerColor=androidx.compose.ui.graphics.Color.Transparent,disabledContainerColor=androidx.compose.ui.graphics.Color.Transparent,focusedIndicatorColor=androidx.compose.ui.graphics.Color.Transparent,unfocusedIndicatorColor=androidx.compose.ui.graphics.Color.Transparent))
+                            TextField(text,model::type,placeholder={ Text("Message MetricMe") },modifier=Modifier.fillMaxWidth().heightIn(max=140.dp),enabled=!demo&&!state.busy&&!recording.active,maxLines=4,colors=TextFieldDefaults.colors(focusedContainerColor=androidx.compose.ui.graphics.Color.Transparent,unfocusedContainerColor=androidx.compose.ui.graphics.Color.Transparent,disabledContainerColor=androidx.compose.ui.graphics.Color.Transparent,focusedIndicatorColor=androidx.compose.ui.graphics.Color.Transparent,unfocusedIndicatorColor=androidx.compose.ui.graphics.Color.Transparent))
                             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                                 Box {
-                                    IconButton(onClick={ attachments=true },enabled=!state.busy&&!recording.active) { Icon(Icons.Outlined.Add,"Add attachment") }
+                                    IconButton(onClick={ attachments=true },enabled=!demo&&!state.busy&&!recording.active) { Icon(Icons.Outlined.Add,"Add attachment") }
                                     DropdownMenu(attachments,{ attachments=false }) {
                                         DropdownMenuItem(text={ Text("Photo library") },leadingIcon={ Icon(Icons.Outlined.Image,null) },onClick={ attachments=false; photo.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
                                         DropdownMenuItem(text={ Text("Camera") },leadingIcon={ Icon(Icons.Outlined.PhotoCamera,null) },onClick={ attachments=false; try { camera.launch(model.cameraUri()) } catch(_:Exception) { model.cameraResult(false) } })
@@ -111,8 +111,8 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
                                     }
                                 }
                                 Spacer(Modifier.weight(1f))
-                                IconButton(onClick={ if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) model.startRecording() else microphone.launch(Manifest.permission.RECORD_AUDIO) },enabled=!state.busy&&!recording.active) { Icon(Icons.Outlined.MicNone,"Record a voice note") }
-                                FilledIconButton(onClick=::send,enabled=!state.busy&&!recording.active&&(text.isNotBlank()||state.attachment!=null)) { Icon(Icons.Outlined.ArrowUpward,"Send message") }
+                                IconButton(onClick={ if(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) model.startRecording() else microphone.launch(Manifest.permission.RECORD_AUDIO) },enabled=!demo&&!state.busy&&!recording.active) { Icon(Icons.Outlined.MicNone,"Record a voice note") }
+                                FilledIconButton(onClick=::send,enabled=!demo&&!state.busy&&!recording.active&&(text.isNotBlank()||state.attachment!=null)) { Icon(Icons.Outlined.ArrowUpward,"Send message") }
                             }
                         }
                     }

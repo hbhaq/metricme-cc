@@ -74,7 +74,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
             if(state.loading) Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) { CircularProgressIndicator() }
             else Box(Modifier.weight(1f)) {
                 when(screen) {
-                    "journal" -> com.hbhaq.metricme.journal.ConversationalJournal(journal, { screen="setup" })
+                    "journal" -> com.hbhaq.metricme.journal.ConversationalJournal(journal, { screen="setup" },state.demo)
                     "insights" -> com.hbhaq.metricme.journal.CloudInsightsScreen(journal,state.demo) { screen="setup" }
                     "you" -> YouScreen(state,model,{ screen="measurements" })
                     "setup" -> SetupScreen(state,model,ai,journal,{ screen=it })
