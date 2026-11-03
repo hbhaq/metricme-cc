@@ -8,6 +8,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.io.readByteArray
 import java.time.*
@@ -35,12 +36,14 @@ fun Route.journalRoutes(store:JournalStore?,gateway:AiGateway?,slots:Semaphore) 
                 if(request.mimeType.startsWith("image/") && request.text.isBlank() && extraction.entries.any { it.category=="MEDICATION" }) {
                     extraction=extraction.copy(entries=emptyList(),clarification="What medicine and dose did you actually take, and when? A photo alone does not establish that.")
                 }
-                if(extraction.clarification!=null) JournalReply(id,"CLARIFY",extraction.transcript,extraction.clarification,clarification=extraction.clarification)
+                if(extraction.clarification!=null) JournalReply(id,"CLARIFY",extraction.transcript,extraction.clarification.orEmpty(),clarification=extraction.clarification)
                 else if(extraction.action=="QUESTION") {
                     val zone=ZoneId.of(request.zone)
                     val from=LocalDate.parse(extraction.fromDate); val to=LocalDate.parse(extraction.toDate)
                     val stats=withContext(Dispatchers.IO) { db.insights(owner,from,to,zone) }
-                    JournalReply(id,"ANSWER",extraction.transcript,insightText(stats),insights=stats)
+                    val start=from.atStartOfDay(zone).toInstant(); val end=to.plusDays(1).atStartOfDay(zone).toInstant()
+                    val rows=withContext(Dispatchers.IO) { db.page(owner,"${end.toEpochMilli()}|00000000-0000-0000-0000-000000000000",extraction.categoryFilter).entries.filter { Instant.parse(it.fact.occurredAt)>=start && Instant.parse(it.fact.occurredAt)<end } }
+                    JournalReply(id,"ANSWER",extraction.transcript,"Period summary across all categories. "+insightText(stats),insights=stats,references=rows)
                 } else JournalReply(id,"SAVED",extraction.transcript,"Saved ${extraction.entries.size} ${if(extraction.entries.size==1) "entry" else "entries"} to your journal.",extraction.entries.map { JournalRecord("",id,0,it) })
             } catch(e:CancellationException) {
                 withContext(NonCancellable+Dispatchers.IO) { db.finish(owner,id,JournalReply(id,"UNCERTAIN",message="Processing was interrupted. Check your journal before sending a new message.")) }; throw e

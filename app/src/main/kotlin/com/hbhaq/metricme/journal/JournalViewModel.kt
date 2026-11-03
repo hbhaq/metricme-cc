@@ -140,7 +140,7 @@ data class JournalState(
             PendingJournal(UUID.randomUUID().toString(),input).also { withContext(Dispatchers.IO) { write(who,"pending",WireJson.encodeToString(it)) }; state.value=state.value.copy(pending=true) }
         }
         val reply=api.send(token,pending.id,pending.input).value()
-        ensureActive(); if(active!=who) return@launch
+        currentCoroutineContext().ensureActive(); if(active!=who) return@launch
         if(reply.status=="PROCESSING") throw JournalException("Still processing. Wait a moment, then tap Retry. The same message ID prevents duplicate entries.")
         withContext(Dispatchers.IO) { path(who,"pending").delete() }
         clarification=if(reply.status=="CLARIFY") (pending.input.clarificationContext+"\nUser: ${reply.transcript}\nQuestion: ${reply.clarification}").take(12000) else ""

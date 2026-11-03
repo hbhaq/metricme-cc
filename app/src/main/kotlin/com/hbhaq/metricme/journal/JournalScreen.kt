@@ -82,6 +82,15 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
                     s.reportedSteps?.let { Text("Reported activity steps: $it") }
                     Text(s.note,style=MaterialTheme.typography.bodySmall)
                 }
+                if(reply.status=="ANSWER") {
+                    if(reply.references.isNotEmpty()) Text("Saved records for your question (up to 50)",style=MaterialTheme.typography.titleMedium)
+                    reply.references.forEach { row ->
+                        HorizontalDivider()
+                        Text("${categoryLabel(row.fact.category)} · ${row.fact.title}",style=MaterialTheme.typography.titleMedium)
+                        Text(row.fact.occurredAt,style=MaterialTheme.typography.bodySmall)
+                        Text(listOf(row.fact.note,factDetails(row.fact)).filter(String::isNotBlank).joinToString(" · "))
+                    }
+                }
             } } }
             if(state.entries.isEmpty() && !state.busy && state.signedIn) item { Panel {
                 Text(if(state.filter==null) "Tell me about your day" else "No ${categoryLabel(state.filter!!).lowercase()} entries yet",style=MaterialTheme.typography.titleLarge)

@@ -22,13 +22,13 @@ val JOURNAL_CATEGORIES = listOf("FOOD", "MEDICATION", "SLEEP", "ACTIVITY", "WATE
 )
 @Serializable data class JournalExtraction(
     val action:String, val transcript:String, val entries:List<JournalFact>,
-    val clarification:String?, val fromDate:String?, val toDate:String?
+    val clarification:String?, val fromDate:String?, val toDate:String?,val categoryFilter:String?=null
 )
 @Serializable data class JournalRecord(val id:String,val messageId:String,val revision:Int,val fact:JournalFact)
 @Serializable data class JournalReply(
     val id:String, val status:String, val transcript:String="", val message:String="",
     val entries:List<JournalRecord> = emptyList(), val clarification:String?=null,
-    val insights:JournalInsights?=null
+    val insights:JournalInsights?=null,val references:List<JournalRecord> = emptyList()
 )
 @Serializable data class JournalPage(val entries:List<JournalRecord>,val nextBefore:String?=null)
 @Serializable data class JournalEdit(val revision:Int,val fact:JournalFact)
@@ -65,6 +65,7 @@ object JournalRules {
     }
     fun extraction(value:JournalExtraction) {
         require(value.action in listOf("LOG","QUESTION")); require(value.transcript.length<=20000)
+        require(value.categoryFilter==null || value.categoryFilter in JOURNAL_CATEGORIES)
         require(value.entries.size<=30); value.entries.forEach { fact(it) }
         require(value.clarification==null || value.clarification.isNotBlank() && value.clarification.length<=1000)
         if(value.clarification!=null) require(value.entries.isEmpty())
