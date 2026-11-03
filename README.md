@@ -2,10 +2,10 @@
 
 A calm, local-first native Android habit and health journal. Kotlin, Jetpack Compose Material 3, Hilt, Room, and a pure Kotlin domain module.
 
-**Current implementation: Android 0.5.0 chat interface.** Journal and AI capture share one screen for text, voice and photos. Clear statements become categorized, account-linked PostgreSQL records; ambiguous statements get clarification. Food estimates stay labelled and entries can be edited, undone or deleted. Insights query saved records and calculate descriptive summaries, rather than replaying a long chat. Offline manual logging remains available separately. See [the 0.4.0 behavior and verification notes](docs/ANDROID-0.4.0.md).
+**Current implementation: Android 0.5.0 chat interface.** Journal and AI capture share one screen for text, voice and photos. Clear statements become categorized, account-linked PostgreSQL records; ambiguous statements get clarification. Food estimates stay labelled and entries can be edited, undone or deleted. Insights query saved records and calculate descriptive summaries, rather than replaying a long chat. Offline manual logging remains available separately. See [the 0.5.0 interface and verification notes](docs/ANDROID-0.5.0.md).
 
-<img src="docs/screenshots/today.png" width="320" alt="MetricMe Today screen captured from the real Android app on the CI emulator">
-<img src="docs/screenshots/ai-assist.png" width="320" alt="MetricMe native photo and audio draft screen captured during the actual emulator UI test">
+<img src="docs/screenshots/log.png" width="320" alt="MetricMe 0.5.0 chat logging screen captured on the CI emulator">
+<img src="docs/screenshots/insights.png" width="320" alt="MetricMe 0.5.0 Insights chat captured during tab and rotation tests">
 
 ## Build
 

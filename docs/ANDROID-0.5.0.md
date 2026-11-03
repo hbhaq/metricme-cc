@@ -14,4 +14,8 @@ Audio imports are decoded locally with Android MediaCodec, downmixed and resampl
 
 Three-calendar-month meal-detail retention and authenticated database queries are unchanged from 0.4.1. Keywords are literal title/note matching; retrieval does not implement semantic search or arbitrary AI-generated SQL.
 
-Validation: pending build and device-test results. Live paid AI and account approval on the user's phone require a separate end-to-end check.
+Validation: [Android CI](https://github.com/hbhaq/metricme-cc/actions/runs/41694906021) passed on source 1a698e6bcb27ac86287ebc8b97240679ae1608f2: 39 API-35 emulator tests, 29 domain tests, APK assembly, instrumentation assembly, and lint (0 errors, 14 existing warnings). Navigation tests visit all four tabs repeatedly, preserve both chat drafts through recreation, verify the attachment menu and keep settings collapsed. Audio tests decode 48 kHz stereo WAV to 16 kHz mono and verify invalid-file cleanup. The actual Log, Insights, You and Setup screenshots were visually inspected. [Backend CI](https://github.com/hbhaq/metricme-cc/actions/runs/41694905991) also passed. The reported original phone navigation failure was not reproduced with a crash trace; this release replaces the previous navigation and verifies the resulting flow on the CI emulator. Live paid AI and account approval on the user's phone require a separate end-to-end check.
+
+Download: https://metricme-downloads.vercel.app/MetricMe-0.5.0.apk
+
+Version code 7. Signed APK SHA-256: DFCC121854928C6F70E0877F99963CBB9AFA25E92F7B694F92C38D3571E54257. Development signing certificate SHA-256: 783803cc1d876f0712b8c3692a6c232d361c2b3ca40ced93580b28700bdeb451, matching the previous downloadable 0.3.1, 0.4.0 and 0.4.1 APKs. Signing key remains private and is not in Git. This is a development build, not a Play Store release.
