@@ -225,7 +225,7 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
     Dialog(onDismissRequest = model::closeForm, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = !state.saving, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(
-                topBar = { Row(Modifier.statusBarsPadding().fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) { TextButton(onClick = model::closeForm, enabled = !state.saving) { Icon(Icons.Outlined.Close, null); Spacer(Modifier.width(5.dp)); Text("Cancel") }; Spacer(Modifier.weight(1f)); Text("SAVED ON DEVICE", style = MaterialTheme.typography.labelSmall) } },
+                topBar = { Row(Modifier.statusBarsPadding().fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) { TextButton(onClick = model::closeForm, enabled = !state.saving) { Icon(Icons.Outlined.Close, null); Spacer(Modifier.width(5.dp)); Text("Cancel") }; Spacer(Modifier.weight(1f)) } },
                 bottomBar = { Surface(shadowElevation = 4.dp) { Column(Modifier.navigationBarsPadding().imePadding().padding(20.dp).fillMaxWidth()) {
                     Button(onClick = { when (kind) { "profile" -> model.saveProfile(); "measurement" -> model.saveMeasurement(); "target" -> model.saveTarget() } }, enabled = !state.saving, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                         if (state.saving) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)) }
@@ -265,27 +265,23 @@ private fun displayMeasurement(m: Measurement, imperial: Boolean, locale: Locale
         Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.bodyMedium); Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
-@Composable private fun MeasurementForm(model: MetricMeViewModel, state: AppState) {
-    val kind by model.measurementKind.collectAsStateWithLifecycle(); val value by model.measurementValue.collectAsStateWithLifecycle()
-    val date by model.measurementDate.collectAsStateWithLifecycle(); val acquisition by model.acquisition.collectAsStateWithLifecycle()
+@Composable private fun MeasurementForm(model:MetricMeViewModel,state:AppState) {
+    val kind by model.measurementKind.collectAsStateWithLifecycle()
+    val value by model.measurementValue.collectAsStateWithLifecycle()
+    val date by model.measurementDate.collectAsStateWithLifecycle()
     val unusual by model.unusual.collectAsStateWithLifecycle()
-    val type = MeasurementKind.valueOf(kind)
-    val previous = HealthRules.effectiveMeasurement(state.measurements, type, Instant.now())
-    PageTitle("A moment in your journey", "Record ${type.name.lowercase()}", "Corrections are welcome. Cancelling keeps your previous values.")
-    Field("${type.name.lowercase().replaceFirstChar { it.uppercase() }} (${type.unit})", value, { model.text("measurementValue", it); model.flag("unusual", false) }, "Stored in ${type.unit}", numeric = true)
-    Field("Measurement date", date, { model.text("measurementDate", it) }, "YYYY-MM-DD · no future dates")
-    Text("How was this value obtained?", style = MaterialTheme.typography.titleMedium)
-    Choice("Measured with a scale or measuring tool", acquisition == Acquisition.MEASURED.name, { model.text("acquisition", Acquisition.MEASURED.name) })
-    Choice("Manually entered from memory or notes", acquisition == Acquisition.MANUALLY_ENTERED.name, { model.text("acquisition", Acquisition.MANUALLY_ENTERED.name) })
-    val numeric = value.toDoubleOrNull()
-    if (numeric != null && HealthRules.validateMeasurement(type, numeric) == null && HealthRules.requiresConfirmation(type, numeric, previous?.value)) {
-        Panel {
-            Text("Let’s double-check that value", style = MaterialTheme.typography.titleMedium)
-            Text("This is outside the usual range or differs substantially from the previous measurement. Check the units and decimal point.")
-            CheckRow("I checked this measurement", "Save this value as entered.", unusual) { model.flag("unusual", it) }
-        }
+    var changeDate by rememberSaveable { mutableStateOf(false) }
+    val type=MeasurementKind.valueOf(kind)
+    val previous=HealthRules.effectiveMeasurement(state.measurements,type,Instant.now())
+    val label=type.name.lowercase().replaceFirstChar(Char::uppercaseChar)
+    Text(label,style=MaterialTheme.typography.headlineMedium)
+    Field(label+" ("+type.unit+")",value,{ model.text("measurementValue",it); model.flag("unusual",false) },numeric=true)
+    TextButton(onClick={ changeDate=!changeDate }) { Text(if(changeDate) "Hide date" else "Change date") }
+    if(changeDate) Field("Date",date,{ model.text("measurementDate",it) },"YYYY-MM-DD")
+    val numeric=value.toDoubleOrNull()
+    if(numeric!=null && HealthRules.validateMeasurement(type,numeric)==null && HealthRules.requiresConfirmation(type,numeric,previous?.value)) {
+        CheckRow("I checked this measurement","Confirm the value and units.",unusual) { model.flag("unusual",it) }
     }
-    Text("Same-day entries use their recorded time; the latest entry is used for current estimates. Backdated entries use noon in your local timezone.", style = MaterialTheme.typography.bodySmall)
 }
 @Composable private fun TargetForm(model: MetricMeViewModel) {
     val target by model.manualTarget.collectAsStateWithLifecycle()
