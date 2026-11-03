@@ -21,7 +21,9 @@ import java.time.format.DateTimeFormatter
     val question by model.questionText.collectAsStateWithLifecycle()
     val context=LocalContext.current
     var consent by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(state.signedIn,demo) { if(state.signedIn && !demo) model.insights() }
+    val range=InsightPeriods.range(state.period,LocalDate.parse(state.insightDate))
+    val current=state.insights?.let { it.fromDate==range.first.toString() && it.toDate==range.second.toString() }==true
+    LaunchedEffect(state.signedIn,demo,state.busy,current,state.error) { if(state.signedIn && !demo && !state.busy && !current && state.error==null) model.insights() }
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f),contentPadding=PaddingValues(20.dp,16.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             item { PageTitle("Your saved history","Insights","A day, a week, a month — or just ask.") }
