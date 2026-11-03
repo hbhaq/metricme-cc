@@ -11,18 +11,19 @@ val JOURNAL_CATEGORIES = listOf("FOOD", "MEDICATION", "SLEEP", "ACTIVITY", "WATE
 @Serializable data class JournalInput(
     val text:String="", val mediaBase64:String="", val mimeType:String="",
     val time:String, val zone:String, val consentVersion:String=JOURNAL_CONSENT,
-    val consented:Boolean=false, val clarificationContext:String=""
+    val consented:Boolean=false, val clarificationContext:String="",val mode:String="JOURNAL"
 )
 @Serializable data class JournalFact(
     val category:String, val title:String, val note:String, val occurredAt:String,
     val quantity:Double?=null, val unit:String?=null,
     val calories:Double?=null, val protein:Double?=null, val carbs:Double?=null, val fat:Double?=null,
     val durationMinutes:Double?=null, val steps:Int?=null, val dose:String?=null,
-    val estimated:Boolean=false
+    val estimated:Boolean=false,val zone:String="UTC",val detailsRetained:Boolean=true
 )
 @Serializable data class JournalExtraction(
     val action:String, val transcript:String, val entries:List<JournalFact>,
-    val clarification:String?, val fromDate:String?, val toDate:String?,val categoryFilter:String?=null
+    val clarification:String?, val fromDate:String?, val toDate:String?,val categoryFilter:String?=null,
+    val searchTerm:String?=null,val questionMode:String="SUMMARY"
 )
 @Serializable data class JournalRecord(val id:String,val messageId:String,val revision:Int,val fact:JournalFact)
 @Serializable data class JournalReply(
@@ -43,6 +44,7 @@ val JOURNAL_CATEGORIES = listOf("FOOD", "MEDICATION", "SLEEP", "ACTIVITY", "WATE
 object JournalRules {
     fun input(value:JournalInput) {
         require(value.consented && value.consentVersion==JOURNAL_CONSENT) { "Cloud journal consent required." }
+        require(value.mode in listOf("JOURNAL","INSIGHTS"))
         require(value.text.length<=10000 && value.clarificationContext.length<=12000)
         require(value.text.isNotBlank() || value.mediaBase64.isNotBlank())
         require(value.mimeType in listOf("", "image/jpeg", "image/png", "audio/wav"))
@@ -53,6 +55,7 @@ object JournalRules {
     }
     fun fact(value:JournalFact,now:Instant=Instant.now()) {
         require(value.category in JOURNAL_CATEGORIES && value.title.isNotBlank() && value.title.length<=160 && value.note.length<=2000)
+        ZoneId.of(value.zone)
         require(value.category=="FOOD" || !value.estimated) { "Only food estimates may contain inferred quantities." }
         require(Instant.parse(value.occurredAt)<=now.plusSeconds(300)) { "Journal events must not be in the future." }
         require(value.unit==null || value.unit.length<=50); require(value.dose==null || value.dose.length<=200)
@@ -67,10 +70,21 @@ object JournalRules {
     fun extraction(value:JournalExtraction) {
         require(value.action in listOf("LOG","QUESTION")); require(value.transcript.length<=20000)
         require(value.categoryFilter==null || value.categoryFilter in JOURNAL_CATEGORIES)
+        require(value.searchTerm==null || value.searchTerm.isNotBlank() && value.searchTerm.length<=100)
+        require(value.questionMode in listOf("SUMMARY","LATEST","SEARCH"))
         require(value.entries.size<=30); value.entries.forEach { fact(it) }
         require(value.clarification==null || value.clarification.isNotBlank() && value.clarification.length<=1000)
         if(value.clarification!=null) require(value.entries.isEmpty())
         if(value.action=="LOG") require(value.entries.isNotEmpty() || value.clarification!=null)
         if(value.action=="QUESTION") { require(value.entries.isEmpty()); LocalDate.parse(requireNotNull(value.fromDate)); LocalDate.parse(requireNotNull(value.toDate)) }
+    }
+}
+
+object MealRetention {
+    fun cutoff(now:Instant=Instant.now()):Instant=now.atZone(java.time.ZoneOffset.UTC).minusMonths(3).toInstant()
+    fun redact(f:JournalFact,now:Instant=Instant.now()):JournalFact {
+        if(f.category!="FOOD" || Instant.parse(f.occurredAt)>=cutoff(now)) return f
+        val day=Instant.parse(f.occurredAt).atZone(ZoneId.of(f.zone)).toLocalDate()
+        return f.copy(title="Nutrition summary",note="Meal details removed after three months.",occurredAt=day.atTime(12,0).atZone(ZoneId.of(f.zone)).toInstant().toString(),quantity=null,unit=null,detailsRetained=false)
     }
 }

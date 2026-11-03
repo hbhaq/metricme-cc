@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -69,6 +70,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 destinations.forEach { destination ->
                     NavigationBarItem(selected = route == destination.route || (route in setOf("you", "measurements", "routines") && destination.route == "setup"),
+                        modifier=Modifier.testTag("nav-${destination.route}"),
                         onClick = { nav.navigate(destination.route) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } },
                         icon = { Icon(destination.icon, contentDescription = null) }, label = { Text(destination.label) })
                 }

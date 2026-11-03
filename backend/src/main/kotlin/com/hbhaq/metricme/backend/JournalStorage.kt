@@ -16,9 +16,34 @@ interface JournalStore {
     fun undo(owner:String,message:String)
     fun insights(owner:String,from:LocalDate,to:LocalDate,zone:ZoneId):JournalInsights
     fun purge(owner:String)
+    fun compact(owner:String?=null) {}
+    fun search(owner:String,from:LocalDate,to:LocalDate,zone:ZoneId,category:String?,term:String?,latest:Boolean):List<JournalRecord>
 }
 
 class PostgresJournal(private val pool:HikariDataSource):JournalStore {
+    override fun compact(owner:String?) {
+        val owners=if(owner!=null) listOf(owner) else pool.connection.use { c -> c.prepareStatement("SELECT DISTINCT owner_hash FROM journal_entries WHERE category='FOOD' AND occurred_at<? AND COALESCE(content::jsonb->>'detailsRetained','true')<>'false' UNION SELECT DISTINCT owner_hash FROM journal_messages WHERE result IS NOT NULL AND created_at<?").use { s -> val cutoff=MealRetention.cutoff().toEpochMilli(); s.setLong(1,cutoff); s.setLong(2,cutoff); s.executeQuery().use { r -> buildList { while(r.next()) add(r.getString(1)) } } } }
+        for(user in owners) transaction { c ->
+            lock(c,user)
+            val rows=c.prepareStatement("SELECT * FROM journal_entries WHERE owner_hash=? AND category='FOOD' AND occurred_at<? AND COALESCE(content::jsonb->>'detailsRetained','true')<>'false'").use { s -> s.setString(1,user); s.setLong(2,MealRetention.cutoff().toEpochMilli()); s.executeQuery().use { r -> buildList { while(r.next()) add(Triple(r.getString("id"),r.getString("message_id"),WireJson.decodeFromString<JournalFact>(r.getString("content")))) } } }
+            rows.forEach { (id,message,fact) ->
+                val redacted=MealRetention.redact(fact)
+                c.prepareStatement("UPDATE journal_entries SET content=?,occurred_at=?,revision=revision+1 WHERE owner_hash=? AND id=?").use { s -> s.setString(1,WireJson.encodeToString(redacted)); s.setLong(2,Instant.parse(redacted.occurredAt).toEpochMilli()); s.setString(3,user); s.setString(4,id); s.executeUpdate() }
+                c.prepareStatement("UPDATE journal_messages SET result=NULL WHERE owner_hash=? AND id=?").use { s -> s.setString(1,user); s.setString(2,message); s.executeUpdate() }
+            }
+            c.prepareStatement("UPDATE journal_messages SET result=NULL WHERE owner_hash=? AND result IS NOT NULL AND (created_at<? OR status='ANSWER')").use { s -> s.setString(1,user); s.setLong(2,MealRetention.cutoff().toEpochMilli()); if(rows.isNotEmpty()) s.executeUpdate() else {
+                c.prepareStatement("UPDATE journal_messages SET result=NULL WHERE owner_hash=? AND created_at<?").use { old -> old.setString(1,user); old.setLong(2,MealRetention.cutoff().toEpochMilli()); old.executeUpdate() }
+            } }
+        }
+    }
+    override fun search(owner:String,from:LocalDate,to:LocalDate,zone:ZoneId,category:String?,term:String?,latest:Boolean):List<JournalRecord> = pool.connection.use { c ->
+        require(category==null || category in JOURNAL_CATEGORIES); require(term==null || term.length<=100)
+        val text=term?.replace("\\","\\\\")?.replace("%","\\%")?.replace("_","\\_")
+        val sql="SELECT * FROM journal_entries WHERE owner_hash=? AND occurred_at>=? AND occurred_at<?"+(if(category!=null) " AND category=?" else "")+(if(text!=null) " AND ((content::jsonb->>'title')||' '||(content::jsonb->>'note')) ILIKE ? ESCAPE E'\\\\'" else "")+(if(text!=null || latest && category=="FOOD") " AND COALESCE(content::jsonb->>'detailsRetained','true')<>'false'" else "")+" ORDER BY occurred_at DESC,id DESC LIMIT "+if(latest) "1" else "50"
+        c.prepareStatement(sql).use { s -> var i=1; s.setString(i++,owner); s.setLong(i++,from.atStartOfDay(zone).toInstant().toEpochMilli()); s.setLong(i++,to.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()); if(category!=null) s.setString(i++,category); if(text!=null) s.setString(i,"%$text%")
+            s.executeQuery().use { r -> buildList { while(r.next()) add(JournalRecord(r.getString("id"),r.getString("message_id"),r.getInt("revision"),MealRetention.redact(WireJson.decodeFromString<JournalFact>(r.getString("content"))))) } }
+        }
+    }
     init { pool.connection.use { c -> c.createStatement().use {
         it.execute("CREATE TABLE IF NOT EXISTS journal_messages (owner_hash VARCHAR(64) NOT NULL,id VARCHAR(36) NOT NULL,payload_hash VARCHAR(64) NOT NULL,status VARCHAR(20) NOT NULL,result TEXT,created_at BIGINT NOT NULL,PRIMARY KEY(owner_hash,id))")
         it.execute("CREATE TABLE IF NOT EXISTS journal_entries (owner_hash VARCHAR(64) NOT NULL,id VARCHAR(36) NOT NULL,message_id VARCHAR(36) NOT NULL,revision INTEGER NOT NULL,category VARCHAR(20) NOT NULL,occurred_at BIGINT NOT NULL,content TEXT NOT NULL,PRIMARY KEY(owner_hash,id))")
@@ -49,11 +74,11 @@ class PostgresJournal(private val pool:HikariDataSource):JournalStore {
         if(!active) return@transaction JournalReply(id,"DELETED",message="This message was removed.")
         val records=reply.entries.mapIndexed { index,row ->
             JournalRules.fact(row.fact)
-            val record=JournalRecord(UUID.nameUUIDFromBytes("$owner:$id:$index".toByteArray()).toString(),id,0,row.fact)
+            val record=JournalRecord(UUID.nameUUIDFromBytes("$owner:$id:$index".toByteArray()).toString(),id,0,MealRetention.redact(row.fact))
             c.prepareStatement("INSERT INTO journal_entries VALUES (?,?,?,?,?,?,?)").use { s -> s.setString(1,owner); s.setString(2,record.id); s.setString(3,id); s.setInt(4,0); s.setString(5,record.fact.category); s.setLong(6,Instant.parse(record.fact.occurredAt).toEpochMilli()); s.setString(7,WireJson.encodeToString(record.fact)); s.executeUpdate() }
             record
         }
-        val saved=reply.copy(entries=records)
+        val saved=reply.copy(entries=records,transcript=if(records.any { !it.fact.detailsRetained }) "" else reply.transcript)
         c.prepareStatement("UPDATE journal_messages SET status=?,result=? WHERE owner_hash=? AND id=?").use { it.setString(1,saved.status); it.setString(2,WireJson.encodeToString(saved)); it.setString(3,owner); it.setString(4,id); it.executeUpdate() }
         saved
     }
@@ -69,10 +94,11 @@ class PostgresJournal(private val pool:HikariDataSource):JournalStore {
     }
     override fun edit(owner:String,id:String,edit:JournalEdit):JournalRecord=transaction { c ->
         lock(c,owner); JournalRules.fact(edit.fact)
+        val retained=MealRetention.redact(edit.fact)
         val message=c.prepareStatement("SELECT message_id,revision FROM journal_entries WHERE owner_hash=? AND id=?").use { it.setString(1,owner); it.setString(2,id); it.executeQuery().use { r -> if(!r.next()) throw ApiFailure("not_found",404); if(r.getInt(2)!=edit.revision) throw ApiFailure("revision_conflict",409); r.getString(1) } }
-        c.prepareStatement("UPDATE journal_entries SET revision=revision+1,category=?,occurred_at=?,content=? WHERE owner_hash=? AND id=?").use { it.setString(1,edit.fact.category); it.setLong(2,Instant.parse(edit.fact.occurredAt).toEpochMilli()); it.setString(3,WireJson.encodeToString(edit.fact)); it.setString(4,owner); it.setString(5,id); it.executeUpdate() }
+        c.prepareStatement("UPDATE journal_entries SET revision=revision+1,category=?,occurred_at=?,content=? WHERE owner_hash=? AND id=?").use { it.setString(1,retained.category); it.setLong(2,Instant.parse(retained.occurredAt).toEpochMilli()); it.setString(3,WireJson.encodeToString(retained)); it.setString(4,owner); it.setString(5,id); it.executeUpdate() }
         invalidate(c,owner,message,"EDITED")
-        JournalRecord(id,message,edit.revision+1,edit.fact)
+        JournalRecord(id,message,edit.revision+1,retained)
     }
     private fun invalidate(c:Connection,owner:String,message:String,status:String) {
         c.prepareStatement("UPDATE journal_messages SET status=?,result=NULL WHERE owner_hash=? AND id=?").use { it.setString(1,status); it.setString(2,owner); it.setString(3,message); it.executeUpdate() }

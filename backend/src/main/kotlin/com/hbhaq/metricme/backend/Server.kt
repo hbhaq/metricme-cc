@@ -62,7 +62,7 @@ fun Application.metricMe(config:ServerConfig,store:JobStore?,gateway:AiGateway?,
     install(Authentication) { bearer("oidc") { authenticate { credential -> verify(credential.token)?.let(::SubjectPrincipal) } } }
     val slots=Semaphore(2)
     val maintenance=CoroutineScope(SupervisorJob()+Dispatchers.IO)
-    maintenance.launch { while(isActive) { try { store?.cleanup() } catch(e:CancellationException) { throw e } catch(_:Exception) { /* No payload/SQL exception is logged. Readiness still exposes DB health. */ }; delay(3600000) } }
+    maintenance.launch { while(isActive) { try { store?.cleanup(); journal?.compact() } catch(e:CancellationException) { throw e } catch(_:Exception) { /* No payload/SQL exception is logged. Readiness still exposes DB health. */ }; delay(3600000) } }
     monitor.subscribe(ApplicationStopped) { maintenance.cancel(); store?.close() }
     routing {
         get("/") { call.respondText("MetricMe API · native Android companion. Manual logging remains on your device. /health/live",ContentType.Text.Plain) }

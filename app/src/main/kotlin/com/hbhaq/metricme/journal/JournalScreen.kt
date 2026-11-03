@@ -100,13 +100,13 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
             items(state.entries,key={ it.id }) { entry -> Panel {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                     BadgeText(categoryLabel(entry.fact.category))
-                    Text(runCatching { Instant.parse(entry.fact.occurredAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM · HH:mm")) }.getOrDefault(entry.fact.occurredAt),style=MaterialTheme.typography.bodySmall)
+                    Text(runCatching { Instant.parse(entry.fact.occurredAt).atZone(ZoneId.of(entry.fact.zone)).format(DateTimeFormatter.ofPattern(if(entry.fact.detailsRetained) "d MMM · HH:mm" else "d MMM yyyy")) }.getOrDefault(entry.fact.occurredAt),style=MaterialTheme.typography.bodySmall)
                 }
                 Text(entry.fact.title,style=MaterialTheme.typography.titleMedium)
                 if(entry.fact.note.isNotBlank()) Text(entry.fact.note)
                 factDetails(entry.fact).takeIf(String::isNotBlank)?.let { Text(it,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant) }
                 if(entry.fact.estimated) Text("AI estimate · editable",style=MaterialTheme.typography.labelSmall)
-                Row { TextButton(onClick={ editing=entry },enabled=!state.busy) { Text("Edit") }; TextButton(onClick={ deleting=entry },enabled=!state.busy) { Text("Delete") } }
+                Row { if(entry.fact.detailsRetained) TextButton(onClick={ editing=entry },enabled=!state.busy) { Text("Edit") }; TextButton(onClick={ deleting=entry },enabled=!state.busy) { Text("Delete") } }
             } }
             if(state.before!=null) item { TextButton(onClick=model::more,enabled=!state.busy) { Text("Earlier entries") } }
             item { Row { TextButton(onClick=manual) { Text("Offline manual records") }; TextButton(onClick=legacy) { Text("Older AI drafts") } } }
@@ -143,29 +143,6 @@ fun categoryLabel(category:String)=category.lowercase().replaceFirstChar(Char::u
 }
 
 private fun factDetails(f:JournalFact)=listOfNotNull(f.quantity?.let { "$it ${f.unit.orEmpty()}" },f.dose,f.durationMinutes?.let { "$it minutes" },f.steps?.let { "$it steps" },f.calories?.let { "$it kcal" }).joinToString(" · ")
-
-@Composable fun CloudInsightsScreen(model:JournalViewModel,demo:Boolean,setup:()->Unit) {
-    val state by model.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state.signedIn,demo) { if(state.signedIn && !demo) model.insights() }
-    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
-        item { PageTitle("From your saved records","Insights","Last 30 days. Ask about another period in your journal.") }
-        if(demo) item { Text("Sample mode does not read your cloud records.") }
-        else if(!state.signedIn) item { Panel { Text("Connect your journal to see your history."); Button(onClick=setup) { Text("Open Setup") } } }
-        else {
-            item { OutlinedButton(onClick=model::insights,enabled=!state.busy) { Text("Refresh insights") } }
-            if(state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.error?.let { item { ErrorMessage(it,model::dismissError) } }
-            state.insights?.let { s ->
-                item { Panel { Text("${s.fromDate} – ${s.toDate}",style=MaterialTheme.typography.labelLarge); Text("${s.totalEntries} entries",style=MaterialTheme.typography.headlineMedium); Text("${s.daysLogged} of ${s.daysInPeriod} days have recorded entries.") } }
-                items(s.categories,key={ it.category }) { row -> Panel { Text(categoryLabel(row.category),style=MaterialTheme.typography.titleLarge); Text("${row.entries} entries · ${row.daysLogged} days logged") } }
-                s.averageSleepMinutes?.let { item { Panel { Text("Reported sleep",style=MaterialTheme.typography.titleLarge); Text("${"%.1f".format(it/60)} hours per logged day"); Text("${s.sleepWithDuration} sleep entries with a duration. Missing days are excluded.") } } }
-                s.foodCalories?.let { item { Panel { Text("Food logged",style=MaterialTheme.typography.titleLarge); Text("${it.toLong()} kcal subtotal"); Text("${s.foodWithCalories} entries with known or estimated calories. This is not a complete measure of intake.") } } }
-                s.reportedSteps?.let { item { Panel { Text("Reported activity steps",style=MaterialTheme.typography.titleLarge); Text(it.toString()); Text("${s.activityWithSteps} activity entries with explicitly reported steps.") } } }
-                item { Text(s.note,style=MaterialTheme.typography.bodySmall) }
-            }
-        }
-    }
-}
 
 @Composable private fun JournalEditor(entry:JournalRecord,busy:Boolean,close:()->Unit,save:(JournalFact)->Unit) {
     var title by rememberSaveable(entry.id) { mutableStateOf(entry.fact.title) }

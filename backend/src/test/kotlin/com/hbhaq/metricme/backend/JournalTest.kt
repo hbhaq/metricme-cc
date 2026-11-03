@@ -14,6 +14,39 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 class JournalTest {
+    @Test fun latestItemSearchFindsMatchBeyondRecentPageAndEscapesWildcards() {
+        database().use { db ->
+            val store=PostgresJournal(db.pool); val owner=UUID.randomUUID().toString(); val now=Instant.now()
+            val burger=fact("FOOD",at=now.minusSeconds(45*86400L)).copy(title="Cheeseburger",calories=500.0)
+            val facts=listOf(burger)+(1..65).map { fact(at=now.minusSeconds(it.toLong())) }
+            facts.chunked(30).forEach { batch -> val id=UUID.randomUUID().toString(); store.begin(owner,id,id); store.finish(owner,id,JournalReply(id,"SAVED",entries=batch.map { JournalRecord("",id,0,it) })) }
+            val today=LocalDate.now(ZoneOffset.UTC)
+            val match=store.search(owner,today.minusMonths(3),today,ZoneOffset.UTC,"FOOD","burger",true)
+            assertEquals("Cheeseburger",match.single().fact.title)
+            assertTrue(store.search(owner,today.minusMonths(3),today,ZoneOffset.UTC,null,"%",false).isEmpty())
+            assertTrue(store.search("other",today.minusMonths(3),today,ZoneOffset.UTC,"FOOD","burger",true).isEmpty())
+        }
+    }
+    @Test fun mealRetentionRemovesNamesTimesAndReceiptCopiesButKeepsNutritionAndDate() {
+        database().use { db ->
+            val store=PostgresJournal(db.pool); val owner=UUID.randomUUID().toString(); val id=UUID.randomUUID().toString(); val record=UUID.randomUUID().toString()
+            val at=Instant.now().atZone(ZoneOffset.UTC).minusMonths(4).toInstant()
+            val meal=fact("FOOD",at=at).copy(title="Birthday cake",note="Chocolate cake after dinner",quantity=2.0,unit="slices",calories=600.0,protein=5.0,zone="Asia/Karachi")
+            store.begin(owner,id,"hash")
+            db.pool.connection.use { c ->
+                c.prepareStatement("INSERT INTO journal_entries VALUES (?,?,?,?,?,?,?)").use { s -> s.setString(1,owner); s.setString(2,record); s.setString(3,id); s.setInt(4,0); s.setString(5,"FOOD"); s.setLong(6,at.toEpochMilli()); s.setString(7,WireJson.encodeToString(meal)); s.executeUpdate() }
+                c.prepareStatement("UPDATE journal_messages SET status='SAVED',result=? WHERE owner_hash=? AND id=?").use { s -> s.setString(1,WireJson.encodeToString(JournalReply(id,"SAVED",transcript="I had birthday cake",entries=listOf(JournalRecord(record,id,0,meal))))); s.setString(2,owner); s.setString(3,id); s.executeUpdate() }
+            }
+            store.compact(owner); val clean=store.page(owner,null,"FOOD").entries.single().fact
+            assertFalse(clean.detailsRetained); assertEquals("Nutrition summary",clean.title); assertFalse(WireJson.encodeToString(clean).contains("cake")); assertNull(clean.quantity); assertNull(clean.unit)
+            assertEquals(600.0,clean.calories!!,0.001); assertEquals(5.0,clean.protein!!,0.001)
+            assertEquals(at.atZone(ZoneId.of("Asia/Karachi")).toLocalDate(),Instant.parse(clean.occurredAt).atZone(ZoneId.of("Asia/Karachi")).toLocalDate())
+            assertTrue(store.begin(owner,id,"hash").second.entries.isEmpty())
+            val day=at.atZone(ZoneId.of("Asia/Karachi")).toLocalDate()
+            assertEquals(600.0,store.insights(owner,day,day,ZoneId.of("Asia/Karachi")).foodCalories!!,0.001)
+            assertTrue(store.search(owner,day,day,ZoneId.of("Asia/Karachi"),"FOOD","cake",true).isEmpty())
+        }
+    }
     private fun database():PostgresJobs { val url=System.getenv("TEST_DATABASE_URL"); assumeTrue("CI supplies PostgreSQL",!url.isNullOrBlank()); return PostgresJobs(url!!) }
     private fun fact(category:String="NOTE",duration:Double?=null,at:Instant=Instant.now().minusSeconds(60))=JournalFact(category,"Reported $category","User reported",at.toString(),durationMinutes=duration)
     @Test fun durableAtomicBatchHasOwnerIsolationIdempotencyAndSafeUndo() {

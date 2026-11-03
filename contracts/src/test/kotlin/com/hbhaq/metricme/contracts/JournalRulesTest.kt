@@ -5,6 +5,15 @@ import org.junit.Test
 import java.time.Instant
 
 class JournalRulesTest {
+    @Test fun retentionUsesCalendarMonthsAndDoesNotChangeOtherCategories() {
+        val now=Instant.parse("2026-05-31T15:00:00Z")
+        assertEquals(Instant.parse("2026-02-28T15:00:00Z"),MealRetention.cutoff(now))
+        val food=JournalFact("FOOD","Burger","Lunch",Instant.parse("2026-02-28T14:59:59Z").toString(),calories=400.0)
+        assertFalse(MealRetention.redact(food,now).detailsRetained)
+        assertEquals(food.copy(occurredAt="2026-02-28T15:00:00Z"),MealRetention.redact(food.copy(occurredAt="2026-02-28T15:00:00Z"),now))
+        val medication=fact().copy(occurredAt=food.occurredAt)
+        assertEquals(medication,MealRetention.redact(medication,now))
+    }
     private fun fact()=JournalFact("MEDICATION","Reported medicine","Taken as reported",Instant.now().minusSeconds(60).toString(),dose="5 mg")
     @Test fun medicationDoseCannotBeAttachedToAnotherCategory() { JournalRules.fact(fact()); assertThrows(IllegalArgumentException::class.java) { JournalRules.fact(fact().copy(category="FOOD")) } }
     @Test fun unknownIsSeparateFromZeroAndInvalidNumbersFail() {

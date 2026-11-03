@@ -33,7 +33,7 @@ interface JournalApi {
     @DELETE("v1/journal/messages/{id}") suspend fun undo(@Header("Authorization") token:String,@Path("id") id:String):Response<Unit>
     @DELETE("v1/journal/entries/{id}") suspend fun delete(@Header("Authorization") token:String,@Path("id") id:String):Response<Unit>
     @PUT("v1/journal/entries/{id}") suspend fun edit(@Header("Authorization") token:String,@Path("id") id:String,@Body edit:JournalEdit):Response<JournalRecord>
-    @GET("v1/journal/insights") suspend fun insights(@Header("Authorization") token:String,@Query("zone") zone:String):Response<JournalInsights>
+    @GET("v1/journal/insights") suspend fun insights(@Header("Authorization") token:String,@Query("zone") zone:String,@Query("from") from:String?=null,@Query("to") to:String?=null):Response<JournalInsights>
     @DELETE("v1/account/data") suspend fun clear(@Header("Authorization") token:String):Response<Unit>
 }
 private fun journalApi(backend:String):JournalApi=Retrofit.Builder().baseUrl(backend)
@@ -45,7 +45,8 @@ data class JournalState(
     val entries:List<JournalRecord> = emptyList(),val before:String?=null,val busy:Boolean=false,
     val error:String?=null,val reply:JournalReply?=null,val insights:JournalInsights?=null,
     val pending:Boolean=false,val signedIn:Boolean=false,val attachment:String?=null,val attachmentMime:String="",
-    val filter:String?=null,val consentAccepted:Boolean=false
+    val filter:String?=null,val consentAccepted:Boolean=false,val period:String="month",val insightDate:String=java.time.LocalDate.now().toString(),
+    val questions:List<JournalReply> = emptyList(),val questionPending:Boolean=false
 )
 
 @HiltViewModel class JournalViewModel @Inject constructor(
@@ -54,6 +55,8 @@ data class JournalState(
 ):ViewModel() {
     val state=MutableStateFlow(JournalState())
     val text=saved.getStateFlow("journalText","")
+    val questionText=saved.getStateFlow("insightQuestion","")
+    fun typeQuestion(value:String) { if(value.length<=10000) saved["insightQuestion"]=value }
     private var active:String?=null
     private var request:Job?=null
     private var clarification=""
@@ -71,10 +74,10 @@ data class JournalState(
         val binding=identity()
         if(active!=binding) {
             request?.cancel(); recorder.discard(); state.value.attachment?.let(media::delete)
-            active=binding; saved["journalText"]=""; clarification=""; state.value=JournalState(signedIn=binding!=null)
+            active=binding; saved["journalText"]=""; saved["insightQuestion"]=""; clarification=""; state.value=JournalState(signedIn=binding!=null)
             if(binding!=null) {
-                val cache=withContext(Dispatchers.IO) { read(binding,"entries")?.let { runCatching { WireJson.decodeFromString<JournalPage>(it) }.getOrNull() } }
-                if(active==binding) { state.value=state.value.copy(entries=cache?.entries.orEmpty(),before=cache?.nextBefore,pending=withContext(Dispatchers.IO) { read(binding,"pending")!=null },consentAccepted=withContext(Dispatchers.IO) { read(binding,"consent")==JOURNAL_CONSENT }); refresh() }
+                val cache=withContext(Dispatchers.IO) { trimMealCache(context); read(binding,"entries")?.let { runCatching { WireJson.decodeFromString<JournalPage>(it) }.getOrNull() } }
+                if(active==binding) { state.value=state.value.copy(entries=cache?.entries.orEmpty(),before=cache?.nextBefore,pending=withContext(Dispatchers.IO) { read(binding,"pending")!=null },questionPending=withContext(Dispatchers.IO) { read(binding,"question")!=null },consentAccepted=withContext(Dispatchers.IO) { read(binding,"consent")==JOURNAL_CONSENT }); refresh() }
             }
         }
     } } }
@@ -101,7 +104,7 @@ data class JournalState(
         val page=api.entries(token,if(more) state.value.before else null,state.value.filter).value()
         if(active!=who) return
         val entries=if(more) (state.value.entries+page.entries).distinctBy { it.id } else page.entries
-        state.value=state.value.copy(entries=entries,before=page.nextBefore)
+        state.value=state.value.copy(entries=entries.map { it.copy(fact=MealRetention.redact(it.fact)) },before=page.nextBefore)
         if(state.value.filter==null) withContext(Dispatchers.IO) { write(who,"entries",WireJson.encodeToString(JournalPage(entries.take(200),if(entries.size>200) null else page.nextBefore))) }
     }
     fun refresh()=launch { who,api,token -> load(who,api,token) }
@@ -124,11 +127,12 @@ data class JournalState(
         val who=active?:return
         viewModelScope.launch { withContext(Dispatchers.IO) { write(who,"consent",JOURNAL_CONSENT) }; if(active==who) { state.value=state.value.copy(consentAccepted=true); send() } }
     }
+    fun acceptConsentAndAsk() { val who=active?:return; viewModelScope.launch { withContext(Dispatchers.IO) { write(who,"consent",JOURNAL_CONSENT) }; if(active==who) { state.value=state.value.copy(consentAccepted=true); ask() } } }
     fun revokeConsent() { val who=active?:return; viewModelScope.launch { withContext(Dispatchers.IO) { path(who,"consent").delete() }; if(active==who) state.value=state.value.copy(consentAccepted=false) } }
     fun clearCloudData()=launch { who,api,token ->
         if(!api.clear(token).isSuccessful) throw JournalException("Could not delete cloud data yet. Please retry.")
-        withContext(Dispatchers.IO) { path(who,"entries").delete(); path(who,"pending").delete() }
-        state.value=state.value.copy(entries=emptyList(),before=null,reply=null,insights=null,pending=false)
+        withContext(Dispatchers.IO) { path(who,"entries").delete(); path(who,"pending").delete(); path(who,"question").delete() }
+        state.value=state.value.copy(entries=emptyList(),before=null,reply=null,insights=null,pending=false,questions=emptyList(),questionPending=false)
     }
     fun send()=launch { who,api,token ->
         val pending=withContext(Dispatchers.IO) { read(who,"pending")?.let { WireJson.decodeFromString<PendingJournal>(it) } }?:run {
@@ -166,7 +170,38 @@ data class JournalState(
         load(who,api,token)
     }
     fun edit(entry:JournalRecord,fact:JournalFact,done:()->Unit)=launch { who,api,token -> JournalRules.fact(fact); api.edit(token,entry.id,JournalEdit(entry.revision,fact)).value(); withContext(Dispatchers.IO) { path(who,"entries").delete() }; state.value=state.value.copy(reply=null,insights=null); load(who,api,token); done() }
-    fun insights()=launch { who,api,token -> val data=api.insights(token,ZoneId.systemDefault().id).value(); if(active==who) state.value=state.value.copy(insights=data,reply=JournalReply("","ANSWER",message="Last 30 days",insights=data)) }
+    fun insights()=launch { who,api,token ->
+        val range=InsightPeriods.range(state.value.period,java.time.LocalDate.parse(state.value.insightDate))
+        val data=api.insights(token,ZoneId.systemDefault().id,range.first.toString(),range.second.toString()).value()
+        if(active==who) state.value=state.value.copy(insights=data)
+    }
+    fun choosePeriod(period:String) { if(state.value.busy || period !in listOf("day","week","month")) return; state.value=state.value.copy(period=period,insights=null); insights() }
+    fun chooseInsightDate(date:java.time.LocalDate) { if(state.value.busy || date>java.time.LocalDate.now()) return; state.value=state.value.copy(insightDate=date.toString(),insights=null); insights() }
+    fun shiftPeriod(direction:Long) {
+        val date=java.time.LocalDate.parse(state.value.insightDate)
+        chooseInsightDate(when(state.value.period) { "day" -> date.plusDays(direction); "week" -> date.plusWeeks(direction); else -> date.plusMonths(direction) }.coerceAtMost(java.time.LocalDate.now()))
+    }
+    fun ask()=launch { who,api,token ->
+        val pending=withContext(Dispatchers.IO) { read(who,"question")?.let { WireJson.decodeFromString<PendingJournal>(it) } }?:run {
+            if(questionText.value.isBlank()) throw JournalException("Type a question about your saved records.")
+            val input=JournalInput(text=questionText.value,time=Instant.now().toString(),zone=ZoneId.systemDefault().id,consented=true,mode="INSIGHTS",clarificationContext=state.value.questions.lastOrNull()?.transcript.orEmpty().take(10000))
+            JournalRules.input(input)
+            PendingJournal(UUID.randomUUID().toString(),input).also { withContext(Dispatchers.IO) { write(who,"question",WireJson.encodeToString(it)) }; state.value=state.value.copy(questionPending=true) }
+        }
+        val result=api.send(token,pending.id,pending.input).value()
+        if(result.status=="PROCESSING") throw JournalException("Still checking your records. Tap Retry in a moment.")
+        withContext(Dispatchers.IO) { path(who,"question").delete() }
+        if(active==who) { state.value=state.value.copy(questions=(state.value.questions+result.copy(transcript=pending.input.text)).takeLast(10),questionPending=false); saved["insightQuestion"]="" }
+    }
     override fun onCleared() { recorder.stop(); super.onCleared() }
 }
 private class JournalException(message:String):Exception(message)
+
+object InsightPeriods {
+    fun range(period:String,anchor:java.time.LocalDate,today:java.time.LocalDate=java.time.LocalDate.now()):Pair<java.time.LocalDate,java.time.LocalDate> {
+        require(anchor<=today)
+        val from=when(period) { "day" -> anchor; "week" -> anchor.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)); "month" -> anchor.withDayOfMonth(1); else -> error("Unknown period") }
+        val end=when(period) { "day" -> from; "week" -> from.plusDays(6); else -> from.plusMonths(1).minusDays(1) }
+        return from to end.coerceAtMost(today)
+    }
+}

@@ -45,6 +45,7 @@ fun apiAt(url:String):MetricMeApi {
         val path=drafts.cancel(id,delete); work.cancelAllWorkByTag("ai:$id"); if(delete) files.delete(path); maintain()
     }
     suspend fun maintenance() {
+        withContext(Dispatchers.IO) { com.hbhaq.metricme.journal.trimMealCache(context) }
         val now=System.currentTimeMillis()
         for(row in drafts.dao.all()) {
             if(row.localMediaPath!=null && (row.stamp.createdAt<now-7*86400000L || row.stamp.processing=="CONFIRMED" && row.stamp.updatedAt<now-86400000L)) {
