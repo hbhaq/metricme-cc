@@ -110,13 +110,14 @@ class JournalTest {
         },verify={ if(it=="alice") owner else if(it=="bob") "other-owner" else null },journal=store) }
         try {
             assertEquals(HttpStatusCode.Unauthorized,client.get("/v1/journal/entries").status)
-            suspend fun send(id:String,text:String,consent:Boolean=true)=client.post("/v1/journal/messages") { bearerAuth("alice"); header("Idempotency-Key",id); contentType(ContentType.Application.Json); setBody(WireJson.encodeToString(JournalInput(text=text,time=Instant.now().minusSeconds(10).toString(),zone="UTC",consented=consent))) }
+            suspend fun send(id:String,text:String,consent:Boolean=true,mode:String="JOURNAL")=client.post("/v1/journal/messages") { bearerAuth("alice"); header("Idempotency-Key",id); contentType(ContentType.Application.Json); setBody(WireJson.encodeToString(JournalInput(text=text,time=Instant.now().minusSeconds(10).toString(),zone="UTC",consented=consent,mode=mode))) }
             val id=UUID.randomUUID().toString()
             val input=JournalInput(text="Breakfast, medicine, seven hours sleep",time=Instant.now().minusSeconds(10).toString(),zone="UTC",consented=true)
             repeat(2) { val r=client.post("/v1/journal/messages") { bearerAuth("alice"); header("Idempotency-Key",id); contentType(ContentType.Application.Json); setBody(WireJson.encodeToString(input)) }; assertEquals("SAVED",WireJson.decodeFromString<JournalReply>(r.bodyAsText()).status) }
             assertEquals(1,calls); assertEquals(3,store.page(owner,null,null).entries.size)
             assertEquals("CLARIFY",WireJson.decodeFromString<JournalReply>(send(UUID.randomUUID().toString(),"unclear").bodyAsText()).status)
             assertEquals("ANSWER",WireJson.decodeFromString<JournalReply>(send(UUID.randomUUID().toString(),"history").bodyAsText()).status)
+            assertEquals("CLARIFY",WireJson.decodeFromString<JournalReply>(send(UUID.randomUUID().toString(),"This would otherwise log events",mode="INSIGHTS").bodyAsText()).status)
             assertEquals(3,store.page(owner,null,null).entries.size)
             assertEquals(HttpStatusCode.BadRequest,send(UUID.randomUUID().toString(),"no consent",false).status)
             assertTrue(WireJson.decodeFromString<JournalPage>(client.get("/v1/journal/entries") { bearerAuth("bob") }.bodyAsText()).entries.isEmpty())

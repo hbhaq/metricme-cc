@@ -74,7 +74,7 @@ class PostgresJournal(private val pool:HikariDataSource):JournalStore {
         if(!active) return@transaction JournalReply(id,"DELETED",message="This message was removed.")
         val records=reply.entries.mapIndexed { index,row ->
             JournalRules.fact(row.fact)
-            val record=JournalRecord(UUID.nameUUIDFromBytes("$owner:$id:$index".toByteArray()).toString(),id,0,MealRetention.redact(row.fact))
+            val record=JournalRecord(UUID.nameUUIDFromBytes("$owner:$id:$index".toByteArray()).toString(),id,0,MealRetention.redact(row.fact.copy(detailsRetained=true)))
             c.prepareStatement("INSERT INTO journal_entries VALUES (?,?,?,?,?,?,?)").use { s -> s.setString(1,owner); s.setString(2,record.id); s.setString(3,id); s.setInt(4,0); s.setString(5,record.fact.category); s.setLong(6,Instant.parse(record.fact.occurredAt).toEpochMilli()); s.setString(7,WireJson.encodeToString(record.fact)); s.executeUpdate() }
             record
         }
@@ -94,8 +94,8 @@ class PostgresJournal(private val pool:HikariDataSource):JournalStore {
     }
     override fun edit(owner:String,id:String,edit:JournalEdit):JournalRecord=transaction { c ->
         lock(c,owner); JournalRules.fact(edit.fact)
-        val retained=MealRetention.redact(edit.fact)
-        val message=c.prepareStatement("SELECT message_id,revision FROM journal_entries WHERE owner_hash=? AND id=?").use { it.setString(1,owner); it.setString(2,id); it.executeQuery().use { r -> if(!r.next()) throw ApiFailure("not_found",404); if(r.getInt(2)!=edit.revision) throw ApiFailure("revision_conflict",409); r.getString(1) } }
+        val retained=MealRetention.redact(edit.fact.copy(detailsRetained=true))
+        val message=c.prepareStatement("SELECT message_id,revision,content FROM journal_entries WHERE owner_hash=? AND id=?").use { it.setString(1,owner); it.setString(2,id); it.executeQuery().use { r -> if(!r.next()) throw ApiFailure("not_found",404); if(r.getInt(2)!=edit.revision) throw ApiFailure("revision_conflict",409); if(!WireJson.decodeFromString<JournalFact>(r.getString(3)).detailsRetained) throw ApiFailure("meal_details_expired",409); r.getString(1) } }
         c.prepareStatement("UPDATE journal_entries SET revision=revision+1,category=?,occurred_at=?,content=? WHERE owner_hash=? AND id=?").use { it.setString(1,retained.category); it.setLong(2,Instant.parse(retained.occurredAt).toEpochMilli()); it.setString(3,WireJson.encodeToString(retained)); it.setString(4,owner); it.setString(5,id); it.executeUpdate() }
         invalidate(c,owner,message,"EDITED")
         JournalRecord(id,message,edit.revision+1,retained)

@@ -161,15 +161,15 @@ data class JournalState(
         val id=state.value.reply?.takeIf { it.status=="SAVED" }?.id?:return@launch
         if(!api.undo(token,id).isSuccessful) throw JournalException("Could not undo yet. Please retry.")
         withContext(Dispatchers.IO) { path(who,"entries").delete() }
-        state.value=state.value.copy(reply=null); load(who,api,token)
+        state.value=state.value.copy(reply=null,questions=emptyList(),insights=null); load(who,api,token)
     }
     fun delete(entry:JournalRecord)=launch { who,api,token ->
         if(!api.delete(token,entry.id).isSuccessful) throw JournalException("Could not delete yet. Please retry.")
         withContext(Dispatchers.IO) { path(who,"entries").delete() }
-        state.value=state.value.copy(reply=null,insights=null)
+        state.value=state.value.copy(reply=null,insights=null,questions=emptyList())
         load(who,api,token)
     }
-    fun edit(entry:JournalRecord,fact:JournalFact,done:()->Unit)=launch { who,api,token -> JournalRules.fact(fact); api.edit(token,entry.id,JournalEdit(entry.revision,fact)).value(); withContext(Dispatchers.IO) { path(who,"entries").delete() }; state.value=state.value.copy(reply=null,insights=null); load(who,api,token); done() }
+    fun edit(entry:JournalRecord,fact:JournalFact,done:()->Unit)=launch { who,api,token -> JournalRules.fact(fact); api.edit(token,entry.id,JournalEdit(entry.revision,fact)).value(); withContext(Dispatchers.IO) { path(who,"entries").delete() }; state.value=state.value.copy(reply=null,insights=null,questions=emptyList()); load(who,api,token); done() }
     fun insights()=launch { who,api,token ->
         val range=InsightPeriods.range(state.value.period,java.time.LocalDate.parse(state.value.insightDate))
         val data=api.insights(token,ZoneId.systemDefault().id,range.first.toString(),range.second.toString()).value()
