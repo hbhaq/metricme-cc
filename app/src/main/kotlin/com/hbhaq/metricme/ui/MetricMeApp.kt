@@ -42,8 +42,8 @@ private data class Destination(val route: String, val label: String, val icon: I
 private val destinations = listOf(
     Destination("today", "Today", Icons.Outlined.WbSunny),
     Destination("journal", "Journal", Icons.AutoMirrored.Outlined.MenuBook),
-    Destination("insights", "Insights", Icons.Outlined.BarChart),
-    Destination("you", "You", Icons.Outlined.PersonOutline)
+    Destination("assist", "AI", Icons.Outlined.AutoAwesome),
+    Destination("setup", "Setup", Icons.Outlined.Settings)
 )
 
 @Composable
@@ -59,7 +59,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     val route = entry?.destination?.route ?: "today"
     Scaffold(
         floatingActionButton = {
-            if (!state.demo && !state.loading && route != "assist") FloatingActionButton(onClick = { picker = true }) {
+            if (!state.demo && !state.loading && route in setOf("today", "journal")) FloatingActionButton(onClick = { picker = true }) {
                 Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Outlined.Add, null)
                     Text("Log", style = MaterialTheme.typography.labelLarge)
@@ -69,7 +69,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 destinations.forEach { destination ->
-                    NavigationBarItem(selected = route == destination.route || (route in setOf("measurements", "routines", "assist") && destination.route == "you"),
+                    NavigationBarItem(selected = route == destination.route || (route in setOf("you", "measurements", "routines") && destination.route == "setup"),
                         onClick = { nav.navigate(destination.route) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } },
                         icon = { Icon(destination.icon, contentDescription = null) }, label = { Text(destination.label) })
                 }
@@ -98,10 +98,11 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
                     composable("today") { if (state.demo) TodayScreen(state, model.today(), model::openProfile, { nav.navigate("you") }, { model.setDemo(true) }) else ManualTodayScreen(state, model, logs, logging, { nav.navigate("routines") }) }
                     composable("journal") { if (state.demo) JournalScreen(state, { nav.navigate("measurements") }) else ManualJournalScreen(logs, logging, { nav.navigate("measurements") }) }
                     composable("insights") { InsightsScreen() }
+                    composable("setup") { SetupScreen(state, model, ai, { nav.navigate("you") }, { nav.navigate("routines") }) }
                     composable("you") { YouScreen(state, model, { nav.navigate("measurements") }, { nav.navigate("routines") }, { nav.navigate("assist") }) }
                     composable("measurements") { MeasurementScreen(state, model) { nav.popBackStack() } }
                     composable("routines") { RoutinesScreen(logs, logging, state.demo) { nav.popBackStack() } }
-                    composable("assist") { com.hbhaq.metricme.ai.AiScreen(ai, state.demo, { nav.popBackStack() }) { kind -> nav.popBackStack(); logging.openLog(LogKind.valueOf(kind)) } }
+                    composable("assist") { com.hbhaq.metricme.ai.AiScreen(ai, state.demo, { nav.popBackStack() }, { nav.navigate("setup") }) { kind -> nav.popBackStack(); logging.openLog(LogKind.valueOf(kind)) } }
                 }
             }
         }
@@ -109,6 +110,28 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     if (form.isNotEmpty()) FormDialog(model, state, form)
     if (logEditor.isNotEmpty() && !state.demo) LoggingEditor(logging, logs, logEditor)
     if (picker && !state.demo) LogPicker(onDismiss = { picker = false }, onLog = { picker = false; logging.openLog(it) }, onRoutine = { picker = false; logging.openRoutine(it) }, onAi = { picker = false; nav.navigate("assist") })
+}
+
+@Composable private fun SetupScreen(state:AppState,model:MetricMeViewModel,ai:com.hbhaq.metricme.ai.AiViewModel,profile:()->Unit,routines:()->Unit) {
+    val error by ai.error.collectAsStateWithLifecycle()
+    LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(24.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
+        item { PageTitle("Preferences", "Setup", "Your account, profile and reminders in one place.") }
+        error?.let { item { ErrorMessage(it) { ai.error.value=null } } }
+        if(!state.demo) item { com.hbhaq.metricme.ai.AiSetupPanel(ai) }
+        item { Panel {
+            Text("Your profile",style=MaterialTheme.typography.titleLarge)
+            Text(state.profile?.name?.takeIf(String::isNotBlank)?:"Add your details and optional daily targets.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick=profile,modifier=Modifier.fillMaxWidth()) { Icon(Icons.Outlined.PersonOutline,null); Spacer(Modifier.width(8.dp)); Text("Profile & measurements") }
+            OutlinedButton(onClick=routines,enabled=!state.demo,modifier=Modifier.fillMaxWidth()) { Icon(Icons.Outlined.NotificationsNone,null); Spacer(Modifier.width(8.dp)); Text("Routines & reminders") }
+        } }
+        item { Panel {
+            Row(verticalAlignment=Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { Text("Sample mode",style=MaterialTheme.typography.titleMedium); Text("Explore without changing your records.",style=MaterialTheme.typography.bodySmall) }
+                Switch(checked=state.demo,onCheckedChange=model::setDemo,modifier=Modifier.semantics { contentDescription="Explore demo mode" })
+            }
+        } }
+        item { PrivacyNote() }
+    }
 }
 
 @Composable internal fun PageTitle(eyebrow: String, title: String, subtitle: String? = null) {
@@ -228,9 +251,7 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
     val locale = LocalLocale.current.platformLocale
     val target = HealthRules.historicalTarget(state.targets, model.today())
     LazyColumn(contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        item { PageTitle("Your foundation", "A routine that fits you.", "Your information stays on this device. Share only what feels right.") }
-        item { OutlinedButton(onClick = routines, enabled = !state.demo, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Checklist, null); Spacer(Modifier.width(8.dp)); Text("Habits, medications & reminders") } }
-        item { FilledTonalButton(onClick = assist, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text(if (state.demo) "Explore sample AI reviews" else "Photo, audio & private drafts") } }
+        item { PageTitle("Setup", "Profile & measurements", "Your details and targets stay on this device.") }
         item { Panel {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.PersonOutline, null, Modifier.size(28.dp)) }
@@ -264,9 +285,6 @@ fun MetricMeApp(model: MetricMeViewModel, logging: LoggingViewModel, ai: com.hbh
             Text(target?.explanation ?: "Add optional profile inputs, height, and weight for an estimate. You can also set your own target.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             target?.bmr?.let { Text("Estimated BMR ${it.roundToInt()} kcal/day. Activity is already included in maintenance; exercise is not added twice.", style = MaterialTheme.typography.bodySmall) }
             if (!state.demo) OutlinedButton(onClick = model::openTarget, modifier = Modifier.fillMaxWidth()) { Text("Manage target") }
-        } }
-        item { Panel {
-            Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text("Explore demo mode", style = MaterialTheme.typography.titleMedium); Text("Read-only samples, separate from your records.", style = MaterialTheme.typography.bodySmall) }; Switch(checked = state.demo, onCheckedChange = model::setDemo, modifier = Modifier.semantics { contentDescription = "Explore demo mode" }) }
         } }
         item { PrivacyNote() }
     }

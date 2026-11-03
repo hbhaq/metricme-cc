@@ -17,6 +17,26 @@ import javax.inject.Inject
     val dirty=saved.getStateFlow("aiDirty",false)
     val busy=MutableStateFlow(false)
     val error=MutableStateFlow<String?>(null)
+    val signInCode=MutableStateFlow<SignInCode?>(null)
+    val signingIn=MutableStateFlow(false)
+    private var signInJob:Job?=null
+    fun startCodeSignIn() {
+        if(signInJob?.isActive==true) return
+        signInJob=viewModelScope.launch {
+            signingIn.value=true; sessions.message.value=null
+            val settings=sessions.settings()
+            try {
+                require(settings.complete) { "Complete connection settings in Advanced first." }
+                val state=DeviceSignIn().authorize(settings) { signInCode.value=it }
+                ensureActive()
+                check(sessions.settings()==settings) { "Connection changed. Start sign-in again." }
+                sessions.store(state); queue.maintain()
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { sessions.message.value=if(e is IllegalStateException || e is IllegalArgumentException) e.message else "Unable to reach sign-in. Check your connection and try again." }
+            finally { signingIn.value=false; signInCode.value=null }
+        }
+    }
+    fun cancelCodeSignIn() { signInJob?.cancel(); signInCode.value=null }
     private var editing:DraftContent?=null
     fun field(key:String,fallback:String="")=fields.value[key]?:fallback
     fun change(key:String,value:String) {
@@ -75,6 +95,7 @@ import javax.inject.Inject
         return repository.dao.draft(id)!!.let { AiDraft(it,WireJson.decodeFromString(it.content)) }
     }
     fun save(id:String)=launch { persist(id) }
+    fun saveAndOpenSetup(id:String,open:()->Unit)=launch { persist(id); closeAfterAction(); open() }
     fun upload(id:String)=launch {
         val row=persist(id); require(row.value.result?.sample!=true)
         val binding=sessions.binding()?:throw IllegalArgumentException("Sign in before consenting to an upload.")

@@ -64,7 +64,7 @@ import kotlin.math.roundToInt
     val steps = state.logs.steps(day); val sleep = state.logs.sleepMinutes(day)
     val target = HealthRules.historicalTarget(profile.targets, day)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        item { PageTitle("One day at a time", profile.profile?.name?.takeIf { it.isNotBlank() }?.let { "Make room for you, $it." } ?: "Small steps. More you.", "Your journal works offline. Every entry stays on this device.") }
+        item { PageTitle("Daily overview", "Today", profile.profile?.name?.takeIf { it.isNotBlank() }?.let { "Welcome back, $it." } ?: "Food, movement and rest at a glance.") }
         item { DayNavigator(state, model) }
         if (state.error != null) item { LoggingError(state, model) }
         if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth().semantics { contentDescription = "Loading local logs" }) }

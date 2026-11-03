@@ -14,7 +14,9 @@ class NavigationTest {
 
     @Test fun profileDraftSurvivesRotationAndCancelDoesNotSave() {
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("You").performClick()
+        compose.onNode(hasText("Setup") and hasClickAction()).performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Profile & measurements"))
+        compose.onNodeWithText("Profile & measurements").performClick()
         val edit = hasText("Create profile") or hasText("Edit profile")
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(edit)
         compose.onNode(edit).performClick()
@@ -36,7 +38,25 @@ class NavigationTest {
         file.parentFile!!.mkdirs()
         file.outputStream().use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
         compose.onNodeWithText("Exit demo").performClick()
-        compose.onNodeWithText("You").performClick()
+        compose.onNode(hasText("Setup") and hasClickAction()).performClick()
         compose.onNodeWithText("Alex").assertDoesNotExist()
+    }
+
+    @Test fun setupContainsAccountAndKeepsTechnicalFieldsCollapsed() {
+        compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasText("Setup") and hasClickAction()).performClick()
+        compose.onNodeWithText("AI account").assertExists()
+        compose.onNodeWithText("Sign in with a code").assertExists()
+        compose.onNodeWithText("Backend HTTPS URL").assertDoesNotExist()
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        if(android.os.Build.VERSION.SDK_INT>=29) {
+            val values=android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.DISPLAY_NAME,"setup.png"); put(android.provider.MediaStore.Downloads.MIME_TYPE,"image/png"); put(android.provider.MediaStore.Downloads.RELATIVE_PATH,"Download/metricme-ci") }
+            val uri=context.contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,values)!!
+            context.contentResolver.openOutputStream(uri)!!.use { compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG,100,it) }
+        }
+        compose.onNodeWithText("AI",useUnmergedTree=true).performClick()
+        compose.onNodeWithText("AI account").assertDoesNotExist()
+        compose.onNodeWithText("AI account & setup").performClick()
+        compose.onNodeWithText("AI account").assertExists()
     }
 }

@@ -18,9 +18,7 @@ class AiFlowTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     private fun openAssist() {
         compose.waitUntil(15000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("You").performClick()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Photo, audio & private drafts"))
-        compose.onNodeWithText("Photo, audio & private drafts").performClick()
+        compose.onNodeWithText("AI",useUnmergedTree=true).performClick()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
         if(android.os.Build.VERSION.SDK_INT>=29) {
             val context=InstrumentationRegistry.getInstrumentation().targetContext
@@ -52,9 +50,7 @@ class AiFlowTest {
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Explore with sample data"))
         compose.onNodeWithText("Explore with sample data").performClick()
         try {
-            compose.onNodeWithText("You").performClick()
-            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Explore sample AI reviews"))
-            compose.onNodeWithText("Explore sample AI reviews").performClick()
+            compose.onNodeWithText("AI",useUnmergedTree=true).performClick()
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Try sample food review"))
             compose.onNodeWithText("Try sample food review").performClick()
             compose.onNodeWithText("SAMPLE DATA · LOCAL EXAMPLE").assertExists()

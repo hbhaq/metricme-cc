@@ -31,11 +31,10 @@ import com.hbhaq.metricme.ui.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-@Composable fun AiScreen(model:AiViewModel,demo:Boolean,back:()->Unit,manual:(String)->Unit) {
+@Composable fun AiScreen(model:AiViewModel,demo:Boolean,back:()->Unit,setup:()->Unit,manual:(String)->Unit) {
     val drafts by model.drafts.collectAsStateWithLifecycle(); val selected by model.selected.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle(); val error by model.error.collectAsStateWithLifecycle()
     val recording by model.recorder.state.collectAsStateWithLifecycle()
-    val sessionRevision by model.sessions.changes.collectAsStateWithLifecycle(); val authMessage by model.sessions.message.collectAsStateWithLifecycle()
     val context=LocalContext.current; val owner=LocalLifecycleOwner.current
     var sample by rememberSaveable { mutableStateOf("") }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let { uri -> model.importPhoto(uri) } }
@@ -46,18 +45,19 @@ import kotlinx.coroutines.withContext
         owner.lifecycle.addObserver(observer); onDispose { owner.lifecycle.removeObserver(observer); model.recorder.stop() }
     }
     LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(24.dp,12.dp,24.dp,110.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
-        item { TextButton(onClick=back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack,null); Text("Back") }; PageTitle("Your judgment comes first","A little help. Your final say.","Capture, review, then confirm. AI estimates stay separate from your journal until you save them.") }
+        item { PageTitle("AI assistant","Photo & audio","Capture a meal or activity, review the estimate, then save.") }
+        if(!demo) item { TextButton(onClick=setup) { Icon(Icons.Outlined.Settings,null); Spacer(Modifier.width(8.dp)); Text("AI account & setup") } }
         item { Panel {
-            Icon(Icons.Outlined.PhotoCamera,null); Text("A photo, a starting point",style=MaterialTheme.typography.titleLarge)
-            Text("Take or choose a meal photo. We remove image metadata and show a local preview before any upload.")
+            Icon(Icons.Outlined.PhotoCamera,null); Text("Meal photo",style=MaterialTheme.typography.titleLarge)
+            Text("Preview your photo before choosing to upload.")
             if(demo) Button(onClick={ sample="FOOD" }) { Text("Try sample food review") } else {
                 Button(onClick={ try { camera.launch(model.cameraUri()) } catch(_:Exception) { model.cameraResult(false); model.error.value="Camera unavailable. Choose a photo or log manually." } },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Take a photo") }
                 OutlinedButton(onClick={ picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Choose a photo") }
             }
         } }
         item { Panel {
-            Icon(Icons.Outlined.MicNone,null); Text("Tell your activity story",style=MaterialTheme.typography.titleLarge)
-            Text("Record up to two minutes. Only stated activity details are extracted; missing steps stay unknown. Recording stops when you leave this screen.")
+            Icon(Icons.Outlined.MicNone,null); Text("Activity voice note",style=MaterialTheme.typography.titleLarge)
+            Text("Describe your activity in up to two minutes.")
             if(demo) Button(onClick={ sample="ACTIVITY" }) { Text("Try sample activity review") } else {
                 Text(if(recording.active) "Recording · ${recording.seconds}s / 120s" else recording.path?.let { "Recording ready · ${recording.seconds}s" }?:"Microphone is off")
                 if(recording.active) { Button(onClick=model.recorder::stop) { Text("Stop recording") }; TextButton(onClick=model.recorder::discard) { Text("Cancel recording") } }
@@ -81,43 +81,64 @@ import kotlinx.coroutines.withContext
                 row.value.error?.let { Text(it,color=MaterialTheme.colorScheme.error) }
                 Button(onClick={ model.select(row) },enabled=!busy) { Text(if(row.value.result==null) "Open draft" else "Review estimate") }
             } } }
-            item { ConnectionPanel(model,sessionRevision,authMessage) }
             item { Text("On-device drafts stay in the app sandbox, not a separately encrypted database. Uploads send the selected media and context to your configured server and OpenAI only after explicit consent. Provider retention is separate from our temporary upload handling. Successful media is removed within 24 hours of confirmation; cancelled/deleted media is removed immediately.",style=MaterialTheme.typography.bodySmall) }
         }
     }
-    if(!demo) drafts.firstOrNull { it.row.id==selected }?.let { DraftReview(model,it,manual) }
+    if(!demo) drafts.firstOrNull { it.row.id==selected }?.let { row -> DraftReview(model,row,{ model.saveAndOpenSetup(row.row.id,setup) },manual) }
     if(sample.isNotEmpty()) SampleReview(if(sample=="FOOD") DemoEstimates.food() else DemoEstimates.activity()) { sample="" }
 }
 private fun statusLabel(status:String)=when(status) {
     "LOCAL" -> "Saved on this device"; "QUEUED" -> "Queued · waiting for connection"; "RUNNING" -> "Processing your draft"; "RETRYABLE" -> "Waiting to retry"; "AUTH_REQUIRED" -> "Sign-in needed"; "READY" -> "Ready for your review"; "CANCELLED" -> "Upload cancelled · draft kept"; "FAILED" -> "Needs your attention"; else -> status.lowercase().replace('_',' ')
 }
-@Composable private fun ConnectionPanel(model:AiViewModel,revision:Int,message:String?) {
+@Composable fun AiSetupPanel(model:AiViewModel) {
+    val revision by model.sessions.changes.collectAsStateWithLifecycle()
+    val message by model.sessions.message.collectAsStateWithLifecycle()
+    val code by model.signInCode.collectAsStateWithLifecycle()
+    val signingIn by model.signingIn.collectAsStateWithLifecycle()
+    val uriHandler=androidx.compose.ui.platform.LocalUriHandler.current
     val settings=remember(revision) { model.sessions.settings() }
     var expanded by rememberSaveable { mutableStateOf(false) }
     var backend by rememberSaveable { mutableStateOf(settings.backend) }; var issuer by rememberSaveable { mutableStateOf(settings.issuer) }
     var client by rememberSaveable { mutableStateOf(settings.clientId) }; var audience by rememberSaveable { mutableStateOf(settings.audience) }
     Panel {
-        SectionLabel("AI connection")
-        Text(if(model.sessions.signedIn()) "Signed in for AI requests" else "Local logging needs no account",style=MaterialTheme.typography.titleMedium)
-        Text(if(settings.complete) "Service: ${runCatching { java.net.URI(settings.backend).host }.getOrDefault("configured")}" else "Real AI is locked until your server and sign-in provider are configured. Sample mode works without them.")
+        Icon(Icons.Outlined.AutoAwesome,null,tint=MaterialTheme.colorScheme.primary)
+        Text("AI account",style=MaterialTheme.typography.titleLarge)
+        BadgeText(if(model.sessions.signedIn()) "Connected" else "Sign-in needed")
+        Text("Sign in to estimate meals and activity. Manual logging works without an account.")
         message?.let { Text(it) }
         if(settings.complete) {
-            if(model.sessions.signedIn()) TextButton(onClick=model.sessions::signOut) { Text("Sign out on this device") }
-            else Button(onClick=model::signIn) { Text("Sign in securely") }
-            TextButton(onClick=model::refresh) { Text("Resume pending uploads") }
+            if(model.sessions.signedIn()) {
+                OutlinedButton(onClick=model.sessions::signOut) { Text("Sign out") }
+                TextButton(onClick=model::refresh) { Text("Resume pending uploads") }
+            } else if(signingIn) {
+                code?.let { current ->
+                    Text("1. Open sign-in and confirm this code.")
+                    androidx.compose.foundation.text.selection.SelectionContainer { Text(current.code,style=MaterialTheme.typography.headlineMedium) }
+                    Button(onClick={ try { uriHandler.openUri(current.url) } catch(_:Exception) { model.sessions.message.value="No browser available. Open ${settings.issuer.trimEnd('/')}/activate on another device and enter the code." } },modifier=Modifier.fillMaxWidth()) { Text("Open sign-in") }
+                    Text("2. Return here after approving. MetricMe will connect automatically.",style=MaterialTheme.typography.bodyMedium)
+                    Text("Only approve a code you requested in this app.",style=MaterialTheme.typography.bodySmall)
+                } ?: Text("Getting a sign-in code…")
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                TextButton(onClick=model::cancelCodeSignIn) { Text("Cancel sign-in") }
+            } else {
+                Button(onClick=model::startCodeSignIn,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)) { Text("Sign in with a code") }
+                Text("Approve in your browser, then return here. No redirect back to the app is required.",style=MaterialTheme.typography.bodySmall)
+            }
         }
-        TextButton(onClick={ expanded=!expanded }) { Text(if(expanded) "Hide connection setup" else "Set up AI connection") }
+        TextButton(onClick={ expanded=!expanded },enabled=!signingIn) { Text(if(expanded) "Hide advanced settings" else "Advanced connection settings") }
         if(expanded) {
             Text("Use the public configuration from your deployed MetricMe service. Never paste an OpenAI key or client secret here.",style=MaterialTheme.typography.bodySmall)
+            TextButton(onClick={ backend=ConnectionSettings.MetricMe.backend; issuer=ConnectionSettings.MetricMe.issuer; client=ConnectionSettings.MetricMe.clientId; audience=ConnectionSettings.MetricMe.audience }) { Text("Use MetricMe defaults") }
             OutlinedTextField(backend,{ backend=it },label={ Text("Backend HTTPS URL") },modifier=Modifier.fillMaxWidth())
             OutlinedTextField(issuer,{ issuer=it },label={ Text("Sign-in issuer URL") },modifier=Modifier.fillMaxWidth())
             OutlinedTextField(client,{ client=it },label={ Text("Android public client ID") },modifier=Modifier.fillMaxWidth())
             OutlinedTextField(audience,{ audience=it },label={ Text("API audience") },modifier=Modifier.fillMaxWidth())
             Button(onClick={ model.configure(ConnectionSettings(backend.trim(),issuer.trim(),client.trim(),audience.trim())) }) { Text("Save connection") }
+            TextButton(onClick=model::signIn) { Text("Try browser redirect sign-in") }
         }
     }
 }
-@Composable private fun DraftReview(model:AiViewModel,row:AiDraft,manual:(String)->Unit) {
+@Composable private fun DraftReview(model:AiViewModel,row:AiDraft,setup:()->Unit,manual:(String)->Unit) {
     val sessionRevision by model.sessions.changes.collectAsStateWithLifecycle()
     val signedIn=remember(sessionRevision) { model.sessions.signedIn() }
     val fields by model.fields.collectAsStateWithLifecycle(); val dirty by model.dirty.collectAsStateWithLifecycle()
@@ -180,7 +201,10 @@ private fun statusLabel(status:String)=when(status) {
                     if(dirty&&!locked) OutlinedButton(onClick={ model.save(row.row.id) },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Save review changes") }
                     if(locked) Button(onClick={ model.cancel(row.row.id,false) },enabled=!busy) { Text("Cancel upload · keep draft") }
                     else if(result==null) Button(onClick={ consent=true },enabled=!busy&&signedIn,modifier=Modifier.fillMaxWidth()) { Text("Review upload consent") }
-                    if(result==null&&!signedIn) Text("Close this draft and sign in from AI connection to upload. It stays available offline.")
+                    if(result==null&&!signedIn) {
+                        Text("Sign in from Setup to upload. Your draft stays saved here.")
+                        OutlinedButton(onClick=setup,enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Go to Setup") }
+                    }
                     if(result!=null) Button(onClick={ model.confirm(row.row.id) },enabled=!busy,modifier=Modifier.fillMaxWidth().heightIn(min=52.dp)) { Text("Confirm journal entries") }
                     OutlinedButton(onClick={ model.close(); manual(row.row.kind) },enabled=!busy,modifier=Modifier.fillMaxWidth()) { Text("Use manual entry") }
                     TextButton(onClick={ deleting=true },enabled=!busy) { Text("Delete draft and private media",color=MaterialTheme.colorScheme.error) }

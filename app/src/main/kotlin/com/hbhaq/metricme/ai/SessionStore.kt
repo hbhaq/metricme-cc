@@ -29,13 +29,19 @@ import kotlin.coroutines.resumeWithException
 
 data class ConnectionSettings(val backend:String="",val issuer:String="",val clientId:String="",val audience:String="") {
     val complete get()=listOf(backend,issuer,clientId,audience).all(String::isNotBlank)
+    companion object {
+        val MetricMe = ConnectionSettings("https://metricme-cc.vercel.app/", "https://dev-sjboqyjugly8goce.us.auth0.com/", "rKSUFgidA8h6Ch2d00iZkeBCluSDmayl", "https://metricme-cc.vercel.app")
+    }
 }
 @Singleton class SessionStore @Inject constructor(@param:ApplicationContext private val context:Context) {
     private val prefs=context.getSharedPreferences("ai-connection",Context.MODE_PRIVATE)
     private val mutex=Mutex()
     val changes=MutableStateFlow(0)
     val message=MutableStateFlow<String?>(null)
-    fun settings()=ConnectionSettings(prefs.getString("backend","").orEmpty(),prefs.getString("issuer","").orEmpty(),prefs.getString("client","").orEmpty(),prefs.getString("audience","").orEmpty())
+    fun settings():ConnectionSettings {
+        val stored=ConnectionSettings(prefs.getString("backend","").orEmpty(),prefs.getString("issuer","").orEmpty(),prefs.getString("client","").orEmpty(),prefs.getString("audience","").orEmpty())
+        return if(listOf(stored.backend,stored.issuer,stored.clientId,stored.audience).all(String::isBlank)) ConnectionSettings.MetricMe else stored
+    }
     fun configure(value:ConnectionSettings) {
         listOf(value.backend,value.issuer).forEach { val uri=java.net.URI(it); require(uri.scheme=="https" && !uri.host.isNullOrBlank() && uri.userInfo==null && uri.query==null && uri.fragment==null) { "Backend and issuer must be HTTPS URLs without credentials, query or fragment." } }
         require(value.clientId.isNotBlank() && value.clientId.length<=300 && value.audience.isNotBlank() && value.audience.length<=500)
@@ -83,12 +89,16 @@ data class ConnectionSettings(val backend:String="",val issuer:String="",val cli
         }
     }
     fun complete(intent:Intent,done:()->Unit) {
+        try {
         val response=AuthorizationResponse.fromIntent(intent); val exception=AuthorizationException.fromIntent(intent)
         if(response==null || exception!=null) { message.value="Sign-in was cancelled or failed. Local logging is still available."; done(); return }
         val state=AuthState(response,null); val service=AuthorizationService(context)
         service.performTokenRequest(response.createTokenExchangeRequest()) { token,error ->
-            try { state.update(token,error); if(token!=null && error==null) store(state) else message.value="Could not complete sign-in. Try again." } finally { service.dispose(); done() }
+            try { state.update(token,error); if(token!=null && error==null) store(state) else message.value="Could not complete sign-in. Try again." }
+            catch(_:Exception) { message.value="Could not save sign-in. Try code sign-in in Setup." }
+            finally { service.dispose(); done() }
         }
+        } catch(_:Exception) { message.value="Could not complete browser sign-in. Try code sign-in in Setup."; done() }
     }
 }
 @AndroidEntryPoint class AuthCompleteActivity:ComponentActivity() {
