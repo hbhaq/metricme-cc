@@ -73,9 +73,15 @@ data class ConnectionSettings(val backend:String="",val issuer:String="",val cli
     suspend fun accessToken(expected:String):String=mutex.withLock {
         check(binding()==expected) { "Sign in with the account that queued this draft." }
         val state=read()?:error("Sign in to continue.")
+        if(!state.needsTokenRefresh) return@withLock state.accessToken?:error("Sign in again to resume uploads.")
         val service=AuthorizationService(context)
-        try { suspendCancellableCoroutine { continuation -> state.performActionWithFreshTokens(service) { access,_,exception ->
-            if(continuation.isActive) { if(binding()!=expected || exception!=null || access.isNullOrBlank()) continuation.resumeWithException(IllegalStateException("Sign in again to resume uploads.")) else { store(state); continuation.resume(access) } }
+        try { suspendCancellableCoroutine { continuation -> service.performTokenRequest(sessionRefreshRequest(state,settings())) { response,exception ->
+            if(continuation.isActive) {
+                try {
+                    check(binding()==expected && exception==null && response!=null && !response.accessToken.isNullOrBlank()) { "Sign in again to resume uploads." }
+                    state.update(response,null); state.needsTokenRefresh=false; store(state); continuation.resume(response!!.accessToken!!)
+                } catch(e:Exception) { continuation.resumeWithException(e) }
+            }
         } } } finally { service.dispose() }
     }
     fun signIn() {
@@ -101,6 +107,12 @@ data class ConnectionSettings(val backend:String="",val issuer:String="",val cli
         } catch(_:Exception) { message.value="Could not complete browser sign-in. Try code sign-in in Setup."; done() }
     }
 }
+// AppAuth 0.11.1's automatic refresh assumes an authorization-code redirect occurred.
+// Device authorization has no redirect response, so build the standard refresh request explicitly.
+internal fun sessionRefreshRequest(state:AuthState,settings:ConnectionSettings):TokenRequest =
+    TokenRequest.Builder(requireNotNull(state.authorizationServiceConfiguration),settings.clientId)
+        .setGrantType(GrantTypeValues.REFRESH_TOKEN)
+        .setRefreshToken(requireNotNull(state.refreshToken) { "Sign in again to resume uploads." }).build()
 @AndroidEntryPoint class AuthCompleteActivity:ComponentActivity() {
     @Inject lateinit var sessions:SessionStore
     override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); if(savedInstanceState!=null) { sessions.message.value="Sign-in was interrupted. Please try again."; finish(); return }; sessions.complete(intent) { finish() } }

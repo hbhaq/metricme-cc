@@ -33,7 +33,10 @@ class DeviceSignInTest {
         assertTrue(state.isAuthorized)
         val restored=net.openid.appauth.AuthState.jsonDeserialize(state.jsonSerializeString())
         assertEquals("refresh",restored.refreshToken)
-        assertEquals(ConnectionSettings.MetricMe.clientId,restored.createTokenRefreshRequest().clientId)
+        val refresh=sessionRefreshRequest(restored,ConnectionSettings.MetricMe)
+        assertEquals(ConnectionSettings.MetricMe.clientId,refresh.clientId)
+        assertEquals("refresh_token",refresh.grantType)
+        assertEquals("refresh",refresh.refreshToken)
     }
 
     @Test fun deniedCodeStopsPolling()=runBlocking {

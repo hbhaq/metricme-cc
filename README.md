@@ -26,15 +26,17 @@ Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Test reports: `domain/bu
 
 ## Try the app
 
-Open Today → Set up your profile, or choose “Explore with sample data.” Demo is read-only and uses in-memory fixtures instead of inserting sample records into the personal database. Exit demo to return to your records. Add kg/cm measurements from You; imperial display is optional. History supports correction and deletion. Manage target supports manual values or a maintenance estimate when inputs are available. All forms offer Cancel and preserve unfinished edits through recreation.
+Open Today → Set up your profile, or choose “Explore with sample data.” Demo is read-only and uses in-memory fixtures instead of inserting sample records into the personal database. Exit demo to return to your records. Add kg/cm measurements from Setup → Profile & measurements; imperial display is optional. History supports correction and deletion. Manage target supports manual values or a maintenance estimate when inputs are available. All forms offer Cancel and preserve unfinished edits through recreation.
 
 Use **Log** for food, activity/workouts, daily steps, sleep, habits/vitamins or medications. Optional nutrition/duration/step fields stay unknown when blank. Food nutrition describes the full entered quantity; portion consumed scales it. Workout lines use `exercise | sets | reps | load in kg`, with unknown fields left blank. Journal supports date navigation, corrections and confirmed deletion. Sleep belongs to the wake-up date; overlapping sessions require confirmation and do not count shared minutes twice.
 
-Open **You → Habits, medications & reminders** to manage routines and enable optional notifications. Scheduled occurrences are tracked separately, as-needed use is recorded separately, and a missed alert does not imply a missed dose. Read [the reminder behavior and limitations](docs/REMINDERS.md).
+Open **Setup → Routines & reminders** to manage routines and enable optional notifications. Scheduled occurrences are tracked separately, as-needed use is recorded separately, and a missed alert does not imply a missed dose. Read [the reminder behavior and limitations](docs/REMINDERS.md).
 
-Use **Log → Photo or audio draft**, or **You → Photo, audio & private drafts**. Take/select a photo or record a short activity note, keep it locally, optionally add context, and explicitly consent before queuing an upload. Review/edit the result and confirm before it enters totals. Food batches save as independently editable entries in one transaction. Cancelled/deleted drafts cannot be populated by late results. Demo mode offers labeled local sample reviews without credentials or personal writes.
+Use **Log → Photo or audio draft**, or the **AI** tab. Take/select a photo or record a short activity note, keep it locally, optionally add context, and explicitly consent before queuing an upload. Review/edit the result and confirm before it enters totals. Food batches save as independently editable entries in one transaction. Cancelled/deleted drafts cannot be populated by late results. Demo mode offers labeled local sample reviews without credentials or personal writes.
 
 See [deployment and sign-in setup](docs/DEPLOYMENT.md) for the Vercel container service, Ktor API, PostgreSQL, server variables and public Android connection settings. No OpenAI key belongs in Android.
+
+Version 0.3.1 groups navigation into Today, Journal, AI and Setup. Open **Setup → Sign in with a code**, approve the displayed code in your browser, and return to the app. This avoids the Android redirect callback. MetricMe service values are prefilled; custom deployments can edit Advanced connection settings. Code sign-in uses the same Auth0 account, API audience and encrypted session storage. It does not send media until you consent to an upload.
 
 ## Rules that matter
 
