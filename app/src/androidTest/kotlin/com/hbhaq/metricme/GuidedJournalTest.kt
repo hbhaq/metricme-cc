@@ -68,7 +68,7 @@ class GuidedJournalTest {
         }
         ViewModelProvider(owner,factory)[JournalViewModel::class.java] to store
     }
-    private suspend fun waitFor(model:JournalViewModel,condition:(JournalState)->Boolean) { withTimeout(10000) { model.state.first { !it.busy && condition(it) } } }
+    private suspend fun waitFor(model:JournalViewModel,label:String,condition:(JournalState)->Boolean) { try { withTimeout(10000) { model.state.first { !it.busy && condition(it) } } } catch(e:TimeoutCancellationException) { throw AssertionError("Timed out at "+label+"; state="+model.state.value+"; text="+model.text.value+"; question="+model.questionText.value,e) } }
     @Test fun foodAndInsightClarificationsSurviveViewModelRecreation()=runBlocking<Unit> {
         val context=IsolatedContext(InstrumentationRegistry.getInstrumentation().targetContext)
         val db=Room.inMemoryDatabaseBuilder(context,MetricMeDatabase::class.java).build()
@@ -77,29 +77,29 @@ class GuidedJournalTest {
         try {
             signIn(sessions,"guided-user")
             var pair=model(context,sessions,nutrition,api); stores+=pair.second; var vm=pair.first
-            waitFor(vm) { it.signedIn && api.loads>0 }
+            waitFor(vm,"initial refresh") { it.signedIn && api.loads>0 }
             withContext(Dispatchers.Main) { vm.type("Burger"); vm.acceptConsentAndSend() }
-            waitFor(vm) { it.reply?.transcript=="Burger" }
+            waitFor(vm,"first food question") { it.reply?.transcript=="Burger" }
             assertTrue(api.records.isEmpty())
             withContext(Dispatchers.Main) { vm.type("One large"); vm.send() }
-            waitFor(vm) { it.reply?.transcript=="One large" }
+            waitFor(vm,"second food question") { it.reply?.transcript=="One large" }
             assertEquals("Burger; portion unknown",api.inputs.last().clarificationContext)
             withContext(Dispatchers.Main) { pair.second.clear() }
             pair=model(context,sessions,nutrition,api); stores+=pair.second; vm=pair.first
-            waitFor(vm) { it.reply?.message=="How prepared?" }
+            waitFor(vm,"restored food question") { it.reply?.message=="How prepared?" }
             withContext(Dispatchers.Main) { vm.type("Grilled beef with cheese"); vm.send() }
-            waitFor(vm) { it.reply?.status=="SAVED" }
+            waitFor(vm,"food saved") { it.reply?.status=="SAVED" }
             assertEquals("Burger; one large; preparation pending",api.inputs.last().clarificationContext)
             assertEquals(1,api.records.size)
             withContext(Dispatchers.Main) { vm.typeQuestion("How am I doing?"); vm.ask() }
-            waitFor(vm) { it.questions.lastOrNull()?.message=="Which goal?" }
+            waitFor(vm,"insight goal question") { it.questions.lastOrNull()?.message=="Which goal?" }
             withContext(Dispatchers.Main) { vm.typeQuestion("My sleep"); vm.ask() }
-            waitFor(vm) { it.questions.lastOrNull()?.message=="Which period?" }
+            waitFor(vm,"insight period question") { it.questions.lastOrNull()?.message=="Which period?" }
             withContext(Dispatchers.Main) { pair.second.clear() }
             pair=model(context,sessions,nutrition,api); stores+=pair.second; vm=pair.first
-            waitFor(vm) { it.questions.lastOrNull()?.message=="Which period?" }
+            waitFor(vm,"restored insight question") { it.questions.lastOrNull()?.message=="Which period?" }
             withContext(Dispatchers.Main) { vm.typeQuestion("Last week"); vm.ask() }
-            waitFor(vm) { it.questions.lastOrNull()?.status=="ANSWER" }
+            waitFor(vm,"insight answered") { it.questions.lastOrNull()?.status=="ANSWER" }
             assertTrue(api.inputs.last().clarificationContext.contains("Sleep goal; period pending"))
             assertEquals(1,api.records.size)
         } finally { withContext(Dispatchers.Main) { stores.forEach { it.clear() } }; sessions.signOut(); db.close(); context.cleanup() }

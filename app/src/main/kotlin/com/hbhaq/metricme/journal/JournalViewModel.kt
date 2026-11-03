@@ -163,6 +163,7 @@ data class JournalState(
             JournalRules.input(input)
             PendingJournal(UUID.randomUUID().toString(),input).also { withContext(Dispatchers.IO) { write(who,"pending",WireJson.encodeToString(it)) }; state.value=state.value.copy(pending=true) }
         }
+        if(pending.input.profile!=null && nutrition.sharedProfile()==null) throw JournalException("Profile sharing is off. Cancel this pending message before sending another.")
         val reply=api.send(token,pending.id,pending.input).value()
         currentCoroutineContext().ensureActive(); if(active!=who) return@launch
         if(reply.status=="PROCESSING") throw JournalException("Still processing. Wait a moment, then tap Retry. The same message ID prevents duplicate entries.")
@@ -204,6 +205,13 @@ data class JournalState(
         val date=java.time.LocalDate.parse(state.value.insightDate)
         chooseInsightDate(when(state.value.period) { "day" -> date.plusDays(direction); "week" -> date.plusWeeks(direction); else -> date.plusMonths(direction) }.coerceAtMost(java.time.LocalDate.now()))
     }
+    fun discardQuestion() {
+        val who=active?:return; if(state.value.busy) return
+        viewModelScope.launch {
+            val pending=withContext(Dispatchers.IO) { read(who,"question")?.let { runCatching { WireJson.decodeFromString<PendingJournal>(it) }.getOrNull() }.also { path(who,"question").delete() } }
+            if(active==who) { pending?.let { saved["insightQuestion"]=it.input.text }; state.value=state.value.copy(questionPending=false,error=null) }
+        }
+    }
     fun ask()=launch { who,api,token ->
         val pending=withContext(Dispatchers.IO) { read(who,"question")?.let { WireJson.decodeFromString<PendingJournal>(it) } }?:run {
             if(questionText.value.isBlank()) throw JournalException("Type a question about your saved records.")
@@ -213,6 +221,7 @@ data class JournalState(
             JournalRules.input(input)
             PendingJournal(UUID.randomUUID().toString(),input).also { withContext(Dispatchers.IO) { write(who,"question",WireJson.encodeToString(it)) }; state.value=state.value.copy(questionPending=true) }
         }
+        if(pending.input.profile!=null && nutrition.sharedProfile()==null) throw JournalException("Profile sharing is off. Cancel this pending question before sending another.")
         val result=api.send(token,pending.id,pending.input).value()
         if(result.status=="PROCESSING") throw JournalException("Still checking your records. Tap Retry in a moment.")
         withContext(Dispatchers.IO) { path(who,"question").delete(); if(result.status in listOf("CLARIFY","ANSWER")) write(who,"insight-context",WireJson.encodeToString(result.copy(transcript=pending.input.text))) }

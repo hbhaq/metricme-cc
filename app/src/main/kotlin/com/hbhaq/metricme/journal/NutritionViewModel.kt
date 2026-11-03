@@ -40,7 +40,7 @@ import javax.inject.Singleton
     fun revoke() { file("consent")?.delete(); revision.value++ }
     private fun enrich(base:WellnessProfile):WellnessProfile {
         val accepted=read("target")?.let { runCatching { WireJson.decodeFromString<AcceptedNutrition>(it) }.getOrNull() }
-        return if(accepted?.profile==base) base.copy(dailyCalorieTarget=accepted.calories,targetEffectiveFrom=accepted.date) else base
+        return if(accepted!=null && accepted.profile==base) base.copy(dailyCalorieTarget=accepted.calories,targetEffectiveFrom=accepted.date) else base
     }
     val profile=combine(profiles.profile,profiles.measurements,sessions.changes,revision) { p,measurements,_,_ ->
         val now=clock.instant()

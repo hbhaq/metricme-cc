@@ -44,6 +44,7 @@ import com.hbhaq.metricme.ui.ErrorMessage
             (if(demo) null else state.error)?.let { item { ErrorMessage(it,model::dismissError) } }
             if(state.busy&&!demo) item { Text("Checking your records…",color=MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+        if(state.questionPending) TextButton(onClick=model::discardQuestion,enabled=!state.busy) { Text("Cancel pending question") }
         Surface(color=MaterialTheme.colorScheme.background) {
             Row(Modifier.fillMaxWidth().imePadding().padding(12.dp),verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(question,model::typeQuestion,modifier=Modifier.weight(1f).heightIn(max=140.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(28.dp),placeholder={ Text("Ask about your history") },enabled=!state.busy&&!state.questionPending,maxLines=4)

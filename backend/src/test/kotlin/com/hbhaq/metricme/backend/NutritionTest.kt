@@ -1,7 +1,7 @@
 package com.hbhaq.metricme.backend
 
 import com.hbhaq.metricme.contracts.*
-import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.*
 import org.junit.Test
 import org.junit.Assert.*
 import io.ktor.server.testing.*
@@ -51,5 +51,12 @@ class NutritionTest {
         val json=WireJson.encodeToJsonElement(JournalReply("id","CLARIFY",message="Question?",continuation="Known facts"))
         assertFalse(compatibleJournalJson(json,false).toString().contains("continuation"))
         assertFalse(legacyJournalJson(json).toString().contains("continuation"))
+    }
+    @Test fun upgradedPendingMessagesRetainTheOldReceiptHashWhenProfileIsNull() {
+        val input=JournalInput(text="A pending note",time=java.time.Instant.now().toString(),zone="UTC",consented=true)
+        val current=WireJson.encodeToString(input).toByteArray()
+        val legacy=JsonObject(WireJson.encodeToJsonElement(input).jsonObject.filterKeys { it!="profile" }).toString().toByteArray()
+        assertEquals(sha256(legacy),journalRequestHash(current,input))
+        assertEquals(journalRequestHash(legacy,input),journalRequestHash(current,input))
     }
 }

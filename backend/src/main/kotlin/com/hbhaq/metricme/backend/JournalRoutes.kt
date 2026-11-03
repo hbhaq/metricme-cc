@@ -32,7 +32,7 @@ fun Route.journalRoutes(store:JournalStore?,gateway:AiGateway?,slots:Semaphore) 
             val media=if(request.mimeType.isEmpty()) byteArrayOf() else try { Base64.getDecoder().decode(request.mediaBase64) } catch(_:Exception) { throw ApiFailure("invalid_media",400) }
             if(request.mimeType.startsWith("image/")) MediaValidation.image(media,request.mimeType)
             if(request.mimeType=="audio/wav") MediaValidation.audio(media,request.mimeType)
-            val (owned,previous)=withContext(Dispatchers.IO) { db.begin(owner,id,sha256(bytes)) }
+            val (owned,previous)=withContext(Dispatchers.IO) { db.begin(owner,id,journalRequestHash(bytes,request)) }
             if(!owned) { call.journalRespond(previous,if(previous.status=="PROCESSING") HttpStatusCode.Accepted else HttpStatusCode.OK); return@post }
             val reply=try {
                 var extraction=ai.journal(request,media); JournalRules.extraction(extraction)
@@ -86,6 +86,13 @@ fun Route.journalRoutes(store:JournalStore?,gateway:AiGateway?,slots:Semaphore) 
         val dates=try { val zone=ZoneId.of(call.request.queryParameters["zone"]?:"UTC"); val to=call.request.queryParameters["to"]?.let(LocalDate::parse)?:LocalDate.now(zone); Triple(call.request.queryParameters["from"]?.let(LocalDate::parse)?:to.minusDays(29),to,zone) } catch(_:Exception) { throw ApiFailure("invalid_date_range",400) }
         call.journalRespond(withContext(Dispatchers.IO) { db.insights(owner,dates.first,dates.second,dates.third) })
     }
+}
+
+// A new optional null profile must not change an older Android pending request's receipt hash.
+internal fun journalRequestHash(bytes:ByteArray,input:JournalInput):String {
+    if(input.profile!=null) return sha256(bytes)
+    val raw=WireJson.parseToJsonElement(String(bytes,Charsets.UTF_8)).jsonObject
+    return if("profile" in raw) sha256(JsonObject(raw.filterKeys { it!="profile" }).toString().toByteArray(Charsets.UTF_8)) else sha256(bytes)
 }
 
 // 0.4.0 uses strict JSON parsing. New metadata is opt-in so that existing installs keep working.
